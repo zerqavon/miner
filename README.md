@@ -57,6 +57,8 @@ cmake --build build/windows --parallel
 
 ## HiveOS
 
-El paquete de publicación para HiveOS debe llamarse `zerqavon-miner-1.0.3.tar.gz` y contener una carpeta raíz `zerqavon-miner`.
+El terminal muestra cada share confirmada por la pool como `ACCEPTED SHARE` en verde. El hashrate y los contadores de shares aceptadas, enviadas y rechazadas se actualizan cada 20 segundos.
+
+El paquete de publicación para HiveOS debe llamarse `zerqavon-miner-1.0.4.tar.gz` y contener una carpeta raíz `zerqavon-miner`.
 
 Las credenciales y wallets dentro de `testnet-run` son exclusivamente desechables.

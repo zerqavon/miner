@@ -2,6 +2,13 @@
 
 Date: 2026-08-15
 
+## Accepted-share display and 20-second hashrate
+
+- A strict local Stratum test confirmed 510 accepted-share responses: 32 through fee failover and 478 after the user pool recovered.
+- Every confirmed response produced an `ACCEPTED SHARE` line with the source, block height and cumulative total.
+- The status line appeared once during a 22-second run and reported `H/s`, accepted, submitted and rejected counters.
+- The measured status contained 469 accepted, 469 submitted and 0 rejected shares.
+
 ## Stratum compatibility regression
 
 - Login and submit request IDs are encoded as JSON numbers, as required by XMRig Proxy.

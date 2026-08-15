@@ -19,6 +19,10 @@
 #include <thread>
 #include <vector>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 namespace {
 
 using namespace zqv;
@@ -29,6 +33,15 @@ constexpr const char* kFeeUser = ZQV_FEE_USER;
 constexpr const char* kFeePassword = "x";
 
 std::atomic<bool> g_stop{false};
+
+void enable_terminal_colors() {
+#ifdef _WIN32
+    const auto output = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (output == INVALID_HANDLE_VALUE) return;
+    DWORD mode = 0;
+    if (GetConsoleMode(output, &mode)) SetConsoleMode(output, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#endif
+}
 
 struct Config {
     Endpoint user_endpoint;
@@ -113,9 +126,9 @@ public:
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
         }
+        for (auto& worker : workers_) worker.join();
         user_->stop();
         fee_.stop();
-        for (auto& worker : workers_) worker.join();
         if (status_thread_.joinable()) status_thread_.join();
     }
 
@@ -210,13 +223,7 @@ private:
                     Share share{*current, nonce_bytes, hash};
                     const bool sent = selected.first->submit(share);
                     if (sent) {
-                        const auto count = ++submitted_;
-                        if (count <= 5 || count % 100 == 0) {
-                            std::cout << '[' << source_name(current->source) << "] share/block submitted at height "
-                                      << current->height << " (total " << count << ")\n";
-                        }
-                    } else {
-                        ++rejected_;
+                        ++submitted_;
                     }
                 }
             } catch (const std::exception& error) {
@@ -230,14 +237,17 @@ private:
         auto previous_time = std::chrono::steady_clock::now();
         std::uint64_t previous_hashes = 0;
         while (!g_stop.load()) {
-            for (int i = 0; i < 50 && !g_stop.load(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            for (int i = 0; i < 100 && !g_stop.load(); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            if (g_stop.load()) break;
             const auto now = std::chrono::steady_clock::now();
             const auto total = hashes_.load();
             const double seconds = std::chrono::duration<double>(now - previous_time).count();
             const double speed = seconds > 0 ? (total - previous_hashes) / seconds : 0;
             const bool failover = !user_->connected() && user_->consecutive_failures() >= 10;
-            std::cout << "[status] " << std::fixed << std::setprecision(1) << speed << " H/s, submitted "
-                      << submitted_.load() << ", rejected " << rejected_.load()
+            const auto accepted = user_->accepted_shares() + fee_.accepted_shares();
+            const auto rejected = user_->rejected_shares() + fee_.rejected_shares();
+            std::cout << "[status] " << std::fixed << std::setprecision(1) << speed << " H/s, accepted "
+                      << accepted << ", submitted " << submitted_.load() << ", rejected " << rejected
                       << ", user failures " << user_->consecutive_failures()
                       << (failover ? ", fee failover active" : "") << '\n';
             previous_time = now;
@@ -256,7 +266,6 @@ private:
     std::thread status_thread_;
     std::atomic<std::uint64_t> hashes_{0};
     std::atomic<std::uint64_t> submitted_{0};
-    std::atomic<std::uint64_t> rejected_{0};
 };
 
 void signal_handler(int) { g_stop.store(true); }
@@ -265,6 +274,7 @@ void signal_handler(int) { g_stop.store(true); }
 
 int main(int argc, char** argv) {
     try {
+        enable_terminal_colors();
         std::signal(SIGINT, signal_handler);
         std::signal(SIGTERM, signal_handler);
         Miner miner(parse_config(argc, argv));

@@ -17,6 +17,8 @@ public:
     bool submit(const Share& share) override;
     bool connected() const override { return connected_.load(); }
     unsigned consecutive_failures() const override { return failures_.load(); }
+    std::uint64_t accepted_shares() const override { return accepted_shares_.load(); }
+    std::uint64_t rejected_shares() const override { return rejected_shares_.load(); }
     std::string label() const override;
 
 private:
@@ -32,6 +34,8 @@ private:
     mutable std::mutex job_mutex_;
     std::shared_ptr<const Job> job_;
     std::atomic<std::uint64_t> generation_{0};
+    std::atomic<std::uint64_t> accepted_shares_{0};
+    std::atomic<std::uint64_t> rejected_shares_{0};
 };
 
 } // namespace zqv

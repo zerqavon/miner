@@ -140,7 +140,11 @@ void DaemonProvider::run() {
 bool DaemonProvider::submit(const Share& share) {
     try {
         auto blob = share.job.block_template;
-        if (share.job.template_nonce_offset + share.nonce.size() > blob.size()) return false;
+        if (share.job.template_nonce_offset + share.nonce.size() > blob.size()) {
+            const auto total = ++rejected_shares_;
+            print_share_result(Source::User, false, share.job.height, total, "nonce offset outside block template");
+            return false;
+        }
         std::copy(share.nonce.begin(), share.nonce.end(), blob.begin() + static_cast<std::ptrdiff_t>(share.job.template_nonce_offset));
 
         ptree params;
@@ -154,17 +158,24 @@ bool DaemonProvider::submit(const Share& share) {
         request.add_child("params", params);
         const auto response = parse_json(rpc_call(json_text(request)));
         if (const auto error = response.get_optional<std::string>("error.message")) {
-            std::cerr << "[daemon] rejected: " << *error << '\n';
+            const auto total = ++rejected_shares_;
+            print_share_result(Source::User, false, share.job.height, total, *error);
             return false;
         }
         const bool accepted = response.get<std::string>("result.status", "") == "OK";
         if (accepted) {
+            const auto total = ++accepted_shares_;
+            print_share_result(Source::User, true, share.job.height, total);
             std::lock_guard<std::mutex> lock(job_mutex_);
             if (job_ && job_->generation == share.job.generation) job_.reset();
+        } else {
+            const auto total = ++rejected_shares_;
+            print_share_result(Source::User, false, share.job.height, total, "daemon did not return OK");
         }
         return accepted;
     } catch (const std::exception& error) {
         std::cerr << "[daemon] submit failed: " << error.what() << '\n';
+        ++rejected_shares_;
         return false;
     }
 }

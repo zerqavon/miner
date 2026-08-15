@@ -197,6 +197,26 @@ void StratumProvider::run() {
 
 void StratumProvider::parse_message(const std::string& line) {
     const auto tree = parse_json(line);
+    const auto response_id = tree.get<std::uint64_t>("id", 0);
+    if (response_id > 1) {
+        std::uint64_t height = 0;
+        {
+            std::lock_guard<std::mutex> lock(pending_mutex_);
+            const auto pending = pending_submits_.find(response_id);
+            if (pending == pending_submits_.end()) return;
+            height = pending->second;
+            pending_submits_.erase(pending);
+        }
+        if (const auto error = tree.get_optional<std::string>("error.message")) {
+            const auto total = ++rejected_shares_;
+            print_share_result(source_, false, height, total, *error);
+        } else {
+            const auto total = ++accepted_shares_;
+            print_share_result(source_, true, height, total);
+        }
+        return;
+    }
+
     if (const auto error = tree.get_optional<std::string>("error.message")) {
         std::cerr << '[' << source_name(source_) << "] server error: " << *error << '\n';
         return;
@@ -208,7 +228,7 @@ void StratumProvider::parse_message(const std::string& line) {
         return;
     }
 
-    if (tree.get<int>("id", 0) == 1) {
+    if (response_id == 1) {
         session_id_ = tree.get<std::string>("result.id", "");
         if (session_id_.empty()) throw std::runtime_error("pool login returned no session id");
         publish_job(tree.get_child("result.job"), session_id_);
@@ -243,7 +263,19 @@ void StratumProvider::publish_job(const ptree& tree, const std::string& session_
 }
 
 bool StratumProvider::submit(const Share& share) {
-    return send_line(submit_request(++submit_id_, share));
+    const auto id = ++submit_id_;
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        pending_submits_[id] = share.job.height;
+    }
+    if (send_line(submit_request(id, share))) return true;
+    {
+        std::lock_guard<std::mutex> lock(pending_mutex_);
+        pending_submits_.erase(id);
+    }
+    const auto total = ++rejected_shares_;
+    print_share_result(source_, false, share.job.height, total, "submission write failed");
+    return false;
 }
 
 } // namespace zqv
