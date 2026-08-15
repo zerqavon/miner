@@ -69,7 +69,10 @@ bool xmrig::Job::setBlob(const char *blob)
 
     size /= 2;
 
-    const size_t minSize = nonceOffset() + nonceSize();
+    // Zerqavon domain-separates its PoW blob with "ZQVXPOW\x01" and moves
+    // the four-byte nonce to the end. Its total size can vary with the
+    // CryptoNote transaction-count varint, so the offset is size-dependent.
+    const size_t minSize = algorithm() == Algorithm::RX_ZQV ? 12 : nonceOffset() + nonceSize();
     if (size < minSize || size >= sizeof(m_blob)) {
         return false;
     }
@@ -77,6 +80,13 @@ bool xmrig::Job::setBlob(const char *blob)
     if (!Cvt::fromHex(m_blob, sizeof(m_blob), blob, size * 2)) {
         return false;
     }
+
+    static constexpr uint8_t zqvPrefix[] = { 'Z', 'Q', 'V', 'X', 'P', 'O', 'W', 1 };
+    if (algorithm() == Algorithm::RX_ZQV && memcmp(m_blob, zqvPrefix, sizeof(zqvPrefix)) != 0) {
+        return false;
+    }
+
+    m_size = size;
 
     if (readUnaligned(nonce()) != 0 && !m_nicehash) {
         m_nicehash = true;
@@ -87,7 +97,6 @@ bool xmrig::Job::setBlob(const char *blob)
     memcpy(m_rawBlob, blob, size * 2);
 #   endif
 
-    m_size = size;
     return true;
 }
 
@@ -154,6 +163,10 @@ bool xmrig::Job::setTarget(const char *target)
 
 size_t xmrig::Job::nonceOffset() const
 {
+    if (algorithm() == Algorithm::RX_ZQV) {
+        return m_size >= nonceSize() ? m_size - nonceSize() : 0;
+    }
+
     switch (algorithm().family()) {
     case Algorithm::KAWPOW:
         return 32;

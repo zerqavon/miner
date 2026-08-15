@@ -138,11 +138,14 @@ int64_t xmrig::DaemonClient::submit(const JobResult &result)
 
     char *data = m_blocktemplateStr.data();
 
-    const size_t sig_offset = m_job.nonceOffset() + m_job.nonceSize();
+    // Zerqavon's PoW blob keeps its nonce at the end, but submitted block
+    // templates retain the canonical CryptoNote nonce position.
+    const size_t template_nonce_offset = m_job.algorithm() == Algorithm::RX_ZQV ? 39 : m_job.nonceOffset();
+    const size_t sig_offset = template_nonce_offset + m_job.nonceSize();
 
 #   ifdef XMRIG_PROXY_PROJECT
 
-    memcpy(data + m_job.nonceOffset() * 2, result.nonce, 8);
+    memcpy(data + template_nonce_offset * 2, result.nonce, 8);
 
     if (m_blocktemplate.hasMinerSignature() && result.sig) {
         memcpy(data + sig_offset * 2, result.sig, 64 * 2);
@@ -161,7 +164,7 @@ int64_t xmrig::DaemonClient::submit(const JobResult &result)
 
 #   else
 
-    Cvt::toHex(data + m_job.nonceOffset() * 2, 8, reinterpret_cast<const uint8_t*>(&result.nonce), 4);
+    Cvt::toHex(data + template_nonce_offset * 2, 8, reinterpret_cast<const uint8_t*>(&result.nonce), 4);
 
     if (m_blocktemplate.hasMinerSignature()) {
         Cvt::toHex(data + sig_offset * 2, 128, result.minerSignature(), 64);

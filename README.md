@@ -1,5 +1,9 @@
 # XMRig
 
+> Zerqavon fork: this tree adds the `rx/zqv` algorithm for `ZQVXPOW v1`.
+> See [ZERQAVON.md](ZERQAVON.md) for mining commands, compatibility details
+> and verified test results. The original XMRig documentation follows.
+
 [![Github All Releases](https://img.shields.io/github/downloads/xmrig/xmrig/total.svg)](https://github.com/xmrig/xmrig/releases)
 [![GitHub release](https://img.shields.io/github/release/xmrig/xmrig/all.svg)](https://github.com/xmrig/xmrig/releases)
 [![GitHub Release Date](https://img.shields.io/github/release-date/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/releases)

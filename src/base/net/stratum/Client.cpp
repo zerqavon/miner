@@ -77,6 +77,15 @@ static const char *states[] = {
 #endif
 
 
+static bool isZerqavonPowBlob(const char *blob)
+{
+    // Hex encoding of the eight-byte domain separator "ZQVXPOW\x01".
+    static constexpr char prefix[] = "5a515658504f5701";
+
+    return blob && strncasecmp(blob, prefix, sizeof(prefix) - 1) == 0;
+}
+
+
 xmrig::Client::Client(int id, const char *agent, IClientListener *listener) :
     BaseClient(id, listener),
     m_agent(agent),
@@ -386,7 +395,16 @@ bool xmrig::Client::parseJob(const rapidjson::Value &params, int *code)
     const char *algo = Json::getString(params, "algo");
     const char *blobData = Json::getString(params, "blob");
     if (algo) {
-        job.setAlgorithm(algo);
+        // Existing Zerqavon pools originally advertised rx/0. Preserve
+        // compatibility while selecting the ZQVXPOW nonce layout only when
+        // the miner was explicitly started with rx/zqv and the signed blob
+        // prefix is present.
+        if (m_pool.algorithm() == Algorithm::RX_ZQV && Algorithm(algo) == Algorithm::RX_0 && isZerqavonPowBlob(blobData)) {
+            job.setAlgorithm(Algorithm::RX_ZQV);
+        }
+        else {
+            job.setAlgorithm(algo);
+        }
     }
     else if (m_pool.coin().isValid()) {
         uint8_t blobVersion = 0;

@@ -1,0 +1,40 @@
+{
+    "autosave": true,
+    "background": false,
+    "colors": true,
+    "title": true,
+    "randomx": {
+        "mode": "auto",
+        "1gb-pages": false,
+        "rdmsr": true,
+        "wrmsr": true,
+        "numa": true
+    },
+    "cpu": {
+        "enabled": true,
+        "huge-pages": true,
+        "yield": true,
+        "max-threads-hint": 100,
+        "asm": true
+    },
+    "opencl": {
+        "enabled": false
+    },
+    "cuda": {
+        "enabled": false
+    },
+    "donate-level": 1,
+    "pools": [
+        {
+            "algo": "rx/zqv",
+            "url": "pool.liquidpool.net:4008",
+            "user": "WALLET_OR_POOL_USERNAME",
+            "pass": "x",
+            "keepalive": true,
+            "tls": false
+        }
+    ],
+    "print-time": 20,
+    "retries": 5,
+    "retry-pause": 5
+}
