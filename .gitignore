@@ -1,0 +1,12 @@
+/build/
+/builds/
+/testnet-run/
+/.vs/
+/.vscode/
+*.exe
+*.obj
+*.o
+*.log
+*.pdb
+*.user
+

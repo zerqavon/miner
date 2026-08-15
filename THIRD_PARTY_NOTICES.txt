@@ -1,0 +1,9 @@
+This project contains the RandomX proof-of-work library.
+
+RandomX is Copyright (c) 2018-2019 tevador and Copyright (c) 2014-2019
+The Monero Project. It is distributed under the BSD 3-Clause license.
+The complete required license text is included at:
+
+    external/randomx/LICENSE
+
+No XMRig source code is included or used by this project.
