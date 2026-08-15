@@ -20,12 +20,47 @@ namespace {
 using boost::asio::ip::tcp;
 using boost::property_tree::ptree;
 
-std::string json_text(const ptree& tree) {
-    std::ostringstream out;
-    boost::property_tree::write_json(out, tree, false);
-    auto text = out.str();
-    if (text.empty() || text.back() != '\n') text.push_back('\n');
-    return text;
+std::string json_string(const std::string& value) {
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string result;
+    result.reserve(value.size() + 2);
+    result.push_back('"');
+    for (const auto raw : value) {
+        const auto ch = static_cast<unsigned char>(raw);
+        switch (ch) {
+        case '"': result += "\\\""; break;
+        case '\\': result += "\\\\"; break;
+        case '\b': result += "\\b"; break;
+        case '\f': result += "\\f"; break;
+        case '\n': result += "\\n"; break;
+        case '\r': result += "\\r"; break;
+        case '\t': result += "\\t"; break;
+        default:
+            if (ch < 0x20) {
+                result += "\\u00";
+                result.push_back(hex[ch >> 4]);
+                result.push_back(hex[ch & 0x0f]);
+            } else {
+                result.push_back(static_cast<char>(ch));
+            }
+        }
+    }
+    result.push_back('"');
+    return result;
+}
+
+std::string login_request(const std::string& user, const std::string& password) {
+    return "{\"id\":1,\"jsonrpc\":\"2.0\",\"method\":\"login\",\"params\":{\"login\":"
+        + json_string(user) + ",\"pass\":" + json_string(password)
+        + ",\"agent\":\"ZerqavonMiner/" ZERQAVON_MINER_VERSION "\"}}\n";
+}
+
+std::string submit_request(std::uint64_t id, const Share& share) {
+    return "{\"id\":" + std::to_string(id)
+        + ",\"jsonrpc\":\"2.0\",\"method\":\"submit\",\"params\":{\"id\":"
+        + json_string(share.job.session_id) + ",\"job_id\":" + json_string(share.job.id)
+        + ",\"nonce\":" + json_string(to_hex(share.nonce))
+        + ",\"result\":" + json_string(to_hex(share.hash)) + "}}\n";
 }
 
 ptree parse_json(const std::string& text) {
@@ -123,16 +158,7 @@ void StratumProvider::run() {
                 socket_ = socket;
             }
 
-            ptree params;
-            params.put("login", user_);
-            params.put("pass", password_);
-            params.put("agent", "ZerqavonMiner/" ZERQAVON_MINER_VERSION);
-            ptree request;
-            request.put("id", 1);
-            request.put("jsonrpc", "2.0");
-            request.put("method", "login");
-            request.add_child("params", params);
-            if (!send_line(json_text(request))) throw std::runtime_error("login write failed");
+            if (!send_line(login_request(user_, password_))) throw std::runtime_error("login write failed");
 
             boost::asio::streambuf buffer;
             while (!stopping_.load()) {
@@ -148,8 +174,10 @@ void StratumProvider::run() {
             if (stopping_.load()) break;
             connected_.store(false);
             const auto attempt = ++failures_;
-            if (attempt <= 10 || attempt % 30 == 0) {
+            if (attempt <= 10) {
                 std::cerr << '[' << source_name(source_) << "] connection failed (" << attempt << "/10): " << error.what() << '\n';
+            } else if (attempt % 30 == 0) {
+                std::cerr << '[' << source_name(source_) << "] still reconnecting (attempt " << attempt << "): " << error.what() << '\n';
             }
         }
 
@@ -215,17 +243,7 @@ void StratumProvider::publish_job(const ptree& tree, const std::string& session_
 }
 
 bool StratumProvider::submit(const Share& share) {
-    ptree params;
-    params.put("id", share.job.session_id);
-    params.put("job_id", share.job.id);
-    params.put("nonce", to_hex(share.nonce));
-    params.put("result", to_hex(share.hash));
-    ptree request;
-    request.put("id", ++submit_id_);
-    request.put("jsonrpc", "2.0");
-    request.put("method", "submit");
-    request.add_child("params", params);
-    return send_line(json_text(request));
+    return send_line(submit_request(++submit_id_, share));
 }
 
 } // namespace zqv

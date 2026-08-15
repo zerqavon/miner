@@ -36,10 +36,15 @@ class Server:
         with client:
             stream = client.makefile("rwb")
             while not self._stop.is_set():
-                line = stream.readline()
+                try:
+                    line = stream.readline()
+                except OSError:
+                    return
                 if not line:
                     return
                 request = json.loads(line)
+                if not isinstance(request.get("id"), int):
+                    return
                 if request.get("method") == "login":
                     self.logins += 1
                     response = {
@@ -61,8 +66,11 @@ class Server:
                     response = {"id": request.get("id"), "jsonrpc": "2.0", "result": {"status": "OK"}}
                 else:
                     response = {"id": request.get("id"), "jsonrpc": "2.0", "error": {"message": "unknown method"}}
-                stream.write((json.dumps(response) + "\n").encode())
-                stream.flush()
+                try:
+                    stream.write((json.dumps(response) + "\n").encode())
+                    stream.flush()
+                except OSError:
+                    return
 
     def stop(self):
         self._stop.set()

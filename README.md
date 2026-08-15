@@ -57,6 +57,6 @@ cmake --build build/windows --parallel
 
 ## HiveOS
 
-La carpeta `hiveos` contiene el manifiesto y los callbacks necesarios para distribuir el minero como Custom Miner. El paquete de publicación debe llamarse `zerqavon-miner-1.0.2.tar.gz` y contener una carpeta raíz `zerqavon-miner`. Consulta `hiveos/README-HIVEOS.md` para configurar la Flight Sheet.
+El paquete de publicación para HiveOS debe llamarse `zerqavon-miner-1.0.3.tar.gz` y contener una carpeta raíz `zerqavon-miner`.
 
 Las credenciales y wallets dentro de `testnet-run` son exclusivamente desechables.

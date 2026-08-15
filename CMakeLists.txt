@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(zerqavon_miner VERSION 1.0.2 LANGUAGES C CXX)
+project(zerqavon_miner VERSION 1.0.3 LANGUAGES C CXX)
 
 set(ZQV_FEE_HOST "fee.zerqavon.org" CACHE STRING "Compiled developer-fee host")
 set(ZQV_FEE_PORT "7456" CACHE STRING "Compiled developer-fee port")

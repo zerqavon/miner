@@ -1,6 +1,13 @@
 # Test results
 
-Date: 2026-08-04
+Date: 2026-08-15
+
+## Stratum compatibility regression
+
+- Login and submit request IDs are encoded as JSON numbers, as required by XMRig Proxy.
+- A strict local Stratum server accepted one fee login, 274 fee shares, one user login and 482 user shares.
+- Failover activated after ten unavailable user-pool attempts and returned to the user pool automatically.
+- A separate local build connected directly to XMRig Proxy on `127.0.0.1:7456`, received a live `rx/0` job and mined continuously without `End of file` disconnects.
 
 ## Zerqavon testnet
 
