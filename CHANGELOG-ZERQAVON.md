@@ -8,6 +8,8 @@
   a standard `rx/0` RandomX job for the donation session.
 - Restored the HiveOS custom-miner identifier `zerqavon-miner` for compatibility
   with existing Flight Sheets and older HiveOS loaders.
+- Removed the built-in-miner version hint from the HiveOS manifest so HiveOS
+  downloads the custom archive instead of looking for a nonexistent APT package.
 
 ## 6.26.0-zqv1
 
