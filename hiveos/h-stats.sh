@@ -15,6 +15,8 @@ esac
 
 accepted="$(grep -ac 'accepted (' "$log_file" 2>/dev/null || true)"
 rejected="$(grep -ac 'rejected (' "$log_file" 2>/dev/null || true)"
+[[ -z "$accepted" ]] && accepted=0
+[[ -z "$rejected" ]] && rejected=0
 pid="$(pgrep -o -f '/xmrig-zqv([[:space:]]|$)' 2>/dev/null || true)"
 uptime=0
 [[ -n "$pid" ]] && uptime="$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d ' ')"
