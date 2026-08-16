@@ -1,42 +1,58 @@
-# XMRig
+# Zerqavon XMRig Miner
 
-> Zerqavon fork: this tree adds the `rx/zqv` algorithm for `ZQVXPOW v1`.
-> See [ZERQAVON.md](ZERQAVON.md) for mining commands, compatibility details
-> and verified test results. The original XMRig documentation follows.
+Official CPU miner for the Zerqavon `rx/zqv` proof-of-work algorithm. This is
+a GPLv3 fork of XMRig 6.26.0 with support for Zerqavon's `ZQVXPOW v1`
+domain-separated RandomX jobs.
 
-[![Github All Releases](https://img.shields.io/github/downloads/xmrig/xmrig/total.svg)](https://github.com/xmrig/xmrig/releases)
-[![GitHub release](https://img.shields.io/github/release/xmrig/xmrig/all.svg)](https://github.com/xmrig/xmrig/releases)
-[![GitHub Release Date](https://img.shields.io/github/release-date/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/releases)
-[![GitHub license](https://img.shields.io/github/license/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/blob/master/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/xmrig/xmrig.svg)](https://github.com/xmrig/xmrig/network)
+## Downloads
 
-XMRig is a high performance, open source, cross platform RandomX, KawPow, CryptoNight and [GhostRider](https://github.com/xmrig/xmrig/tree/master/src/crypto/ghostrider#readme) unified CPU/GPU miner and [RandomX benchmark](https://xmrig.com/benchmark). Official binaries are available for Windows, Linux, macOS and FreeBSD.
+Download verified Windows, Ubuntu and HiveOS packages from the
+[latest Zerqavon miner release](https://github.com/zerqavon/miner/releases/latest).
+SHA-256 checksums are published with every release.
 
-## Mining backends
-- **CPU** (x86/x64/ARMv7/ARMv8/RISC-V)
-- **OpenCL** for AMD GPUs.
-- **CUDA** for NVIDIA GPUs via external [CUDA plugin](https://github.com/xmrig/xmrig-cuda).
+## Mining
 
-## Download
-* **[Binary releases](https://github.com/xmrig/xmrig/releases)**
-* **[Build from source](https://xmrig.com/docs/miner/build)**
+```text
+xmrig-zqv -a rx/zqv -o POOL:PORT -u WALLET_OR_POOL_USERNAME -p x
+```
 
-## Usage
-The preferred way to configure the miner is the [JSON config file](https://xmrig.com/docs/miner/config) as it is more flexible and human friendly. The [command line interface](https://xmrig.com/docs/miner/command-line-options) does not cover all features, such as mining profiles for different algorithms. Important options can be changed during runtime without miner restart by editing the config file or executing [API](https://xmrig.com/docs/miner/api) calls.
+The wallet, username and worker format is defined by the selected pool. XMRig
+automatically selects an appropriate CPU profile; use `--threads=N` only when
+you want to override it.
 
-* **[Wizard](https://xmrig.com/wizard)** helps you create initial configuration for the miner.
-* **[Workers](http://workers.xmrig.info)** helps manage your miners via HTTP API.
+## Zerqavon implementation
 
-## Donations
-* Default donation 1% (1 minute in 100 minutes) can be increased via option `donate-level` or disabled in source code.
-* XMR: `48edfHu7V9Z84YzzMa6fUueoELZ9ZRXq9VetWzYGzKt52XU5xvqgzYnDK9URnRoJMk1j8nLwEVsaSWJ4fhdUyZijBGUicoD`
+- Algorithm identifier: `rx/zqv`
+- RandomX configuration: standard/reference RandomX
+- PoW domain prefix: `ZQVXPOW\x01`
+- PoW nonce: final four bytes of the hashing blob
+- Pool protocol: CryptoNote JSON-RPC Stratum
+- Default donation schedule: 1%
+- Production donation endpoint: `fee.zerqavon.org:7456`
 
-## Developers
-* **[xmrig](https://github.com/xmrig)**
-* **[sech1](https://github.com/SChernykh)**
+Legacy first-generation pool jobs advertised as `rx/0` are recognized only
+when the miner was explicitly started with `-a rx/zqv` and the job contains
+the Zerqavon domain prefix.
 
-## Contacts
-* support@xmrig.com
-* [reddit](https://www.reddit.com/user/XMRig/)
-* [twitter](https://twitter.com/xmrig_dev)
+See [ZERQAVON.md](ZERQAVON.md) for implementation details, compatibility notes
+and verified mining results. See [BUILD-PRODUCTION.md](BUILD-PRODUCTION.md) for
+platform-specific instructions.
+
+## Building
+
+Clone recursively and use XMRig's CMake build system:
+
+```bash
+git clone --recursive https://github.com/zerqavon/miner.git
+cd miner
+mkdir build && cd build
+cmake ..
+cmake --build . --config Release
+```
+
+## License and attribution
+
+This project is derived from [XMRig](https://github.com/xmrig/xmrig) and is
+distributed under the GNU General Public License version 3 or later. Original
+copyright notices, source history and the complete [LICENSE](LICENSE) are
+retained.
