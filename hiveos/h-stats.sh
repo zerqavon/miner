@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-log_base="${CUSTOM_LOG_BASENAME:-/var/log/miner/custom/xmrig-zqv}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$script_dir/h-manifest.conf" ]] && source "$script_dir/h-manifest.conf"
+log_base="${CUSTOM_LOG_BASENAME:-/var/log/miner/custom/zerqavon-miner/zerqavon-miner}"
 log_file="${log_base}.log"
 speed_line="$(grep -a 'speed 10s/60s/15m' "$log_file" 2>/dev/null | tail -n 1 || true)"
 

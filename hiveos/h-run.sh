@@ -2,8 +2,9 @@
 set -o pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$script_dir/h-manifest.conf" ]] && source "$script_dir/h-manifest.conf"
 config="${CUSTOM_CONFIG_FILENAME:-$script_dir/zerqavon.conf}"
-log_base="${CUSTOM_LOG_BASENAME:-/var/log/miner/custom/xmrig-zqv}"
+log_base="${CUSTOM_LOG_BASENAME:-/var/log/miner/custom/zerqavon-miner/zerqavon-miner}"
 
 [[ ! -x "$script_dir/xmrig-zqv" ]] && echo "Zerqavon XMRig binary is missing" >&2 && exit 1
 [[ ! -f "$config" ]] && echo "Zerqavon configuration is missing: $config" >&2 && exit 1

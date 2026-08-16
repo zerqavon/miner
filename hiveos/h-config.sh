@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+[[ -f "$script_dir/h-manifest.conf" ]] && source "$script_dir/h-manifest.conf"
+
 miner_ver() {
     echo "6.26.0-zqv2"
 }
 
 miner_config_echo() {
-    local config="${CUSTOM_CONFIG_FILENAME:-/hive/miners/custom/xmrig-zqv/zerqavon.conf}"
+    local config="${CUSTOM_CONFIG_FILENAME:-/hive/miners/custom/zerqavon-miner/zerqavon.conf}"
     if [[ -f "$config" ]]; then
         sed -E 's/^(POOL_PASSWORD=).*/\1********/' "$config"
     else
@@ -14,7 +17,7 @@ miner_config_echo() {
 }
 
 miner_config_gen() {
-    local config="${CUSTOM_CONFIG_FILENAME:-/hive/miners/custom/xmrig-zqv/zerqavon.conf}"
+    local config="${CUSTOM_CONFIG_FILENAME:-/hive/miners/custom/zerqavon-miner/zerqavon.conf}"
     local pool="${CUSTOM_URL%%$'\n'*}"
     local wallet="${CUSTOM_TEMPLATE:-${CUSTOM_WALLET:-}}"
     local password="${CUSTOM_PASS:-x}"

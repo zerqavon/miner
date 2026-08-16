@@ -6,6 +6,8 @@
   `fee.zerqavon.org:7456`.
 - User sessions continue mining `rx/zqv`; the donation endpoint can negotiate
   a standard `rx/0` RandomX job for the donation session.
+- Restored the HiveOS custom-miner identifier `zerqavon-miner` for compatibility
+  with existing Flight Sheets and older HiveOS loaders.
 
 ## 6.26.0-zqv1
 
