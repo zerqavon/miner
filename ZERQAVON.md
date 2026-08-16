@@ -47,7 +47,7 @@ This is a modified version of [XMRig](https://github.com/xmrig/xmrig). It is
 distributed under the GNU General Public License version 3 or later. The
 original copyright notices, source history and `LICENSE` file are retained.
 The standard XMRig donation schedule remains enabled and is shown by the miner
-at startup. In the `zqv2` production build, that session connects to
+at startup. In the `zqv2` and later production builds, that session connects to
 `fee.zerqavon.org:7456` and can negotiate standard `rx/0` RandomX work.
 
 ---

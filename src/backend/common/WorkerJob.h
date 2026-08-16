@@ -86,7 +86,7 @@ public:
     }
 
 
-    inline int32_t nonceOffset() const { return currentJob().nonceOffset(); }
+    inline int32_t nonceOffset() const { return m_nonce_offset[index()]; }
     inline size_t nonceSize() const { return currentJob().nonceSize(); }
 
 private:
@@ -99,6 +99,7 @@ private:
         m_jobs[index()]   = job;
         m_rounds[index()] = 0;
         m_nonce_mask[index()] = job.nonceMask();
+        m_nonce_offset[index()] = static_cast<uint16_t>(job.nonceOffset());
 
         m_jobs[index()].setBackend(backend);
 
@@ -112,6 +113,7 @@ private:
     alignas(8) uint8_t m_blobs[2][Job::kMaxBlobSize * N]{};
     Job m_jobs[2];
     uint32_t m_rounds[2] = { 0, 0 };
+    uint16_t m_nonce_offset[2] = { 0, 0 };
     uint64_t m_nonce_mask[2] = { 0, 0 };
     uint64_t m_sequence  = 0;
     uint8_t m_index      = 0;
@@ -155,6 +157,7 @@ inline void xmrig::WorkerJob<1>::save(const Job &job, uint32_t reserveCount, Non
     m_jobs[index()]   = job;
     m_rounds[index()] = 0;
     m_nonce_mask[index()] = job.nonceMask();
+    m_nonce_offset[index()] = static_cast<uint16_t>(job.nonceOffset());
 
     m_jobs[index()].setBackend(backend);
 

@@ -1,6 +1,6 @@
 # Zerqavon production binaries
 
-Version: `6.26.0-zqv2`
+Version: `6.26.0-zqv3`
 
 ## Windows x64
 
@@ -11,7 +11,9 @@ xmrig-zqv.exe -a rx/zqv -o POOL:PORT -u WALLET_OR_USERNAME -p x
 ```
 
 Run the terminal as administrator if you want XMRig to apply the Windows MSR
-optimization. Keep `WinRing0x64.sys` next to the executable.
+optimization. Keep `WinRing0x64.sys`, `libhwloc-15.dll`, `libltdl-7.dll` and
+`libgcc_s_seh-1.dll` next to the executable. The hwloc-enabled build detects
+CPU topology and assigns RandomX threads and affinity automatically.
 
 ## Ubuntu x64
 

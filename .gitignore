@@ -1,5 +1,7 @@
 /build
+/build-*
 /release
+/*.log
 scripts/build
 scripts/deps
 /CMakeLists.txt.user

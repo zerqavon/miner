@@ -25,5 +25,5 @@ uptime=0
 [[ -z "$uptime" ]] && uptime=0
 
 khs="$(awk -v hs="$hashrate" 'BEGIN { printf "%.6f", hs / 1000 }')"
-stats="$(printf '{"hs":[%s],"hs_units":"hs","uptime":%s,"ar":[%s,%s],"algo":"rx/zqv","ver":"6.26.0-zqv2"}' \
+stats="$(printf '{"hs":[%s],"hs_units":"hs","uptime":%s,"ar":[%s,%s],"algo":"rx/zqv","ver":"6.26.0-zqv3"}' \
     "$hashrate" "$uptime" "$accepted" "$rejected")"

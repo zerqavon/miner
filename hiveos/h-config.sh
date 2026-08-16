@@ -4,7 +4,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [[ -f "$script_dir/h-manifest.conf" ]] && source "$script_dir/h-manifest.conf"
 
 miner_ver() {
-    echo "6.26.0-zqv2"
+    echo "6.26.0-zqv3"
 }
 
 miner_config_echo() {

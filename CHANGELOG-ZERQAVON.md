@@ -1,5 +1,17 @@
 # Zerqavon changes
 
+## 6.26.0-zqv3
+
+- Enabled hwloc topology detection in the Windows production build, allowing
+  XMRig to select SMT threads and affinity correctly on supported CPUs.
+- Cached each worker job's nonce offset instead of recalculating the dynamic
+  Zerqavon end-of-blob position in the hashing loop.
+- On a Ryzen 5 9600X without MSR access, the automatic profile changed from 6
+  to 12 threads and measured about 5.49 kH/s versus 4.19 kH/s in the baseline
+  short benchmark (approximately 31% higher).
+- Live Zerqavon pool validation completed with 222 accepted and 0 rejected
+  shares.
+
 ## 6.26.0-zqv2
 
 - Redirected the standard one-minute-per-100-minutes donation session to
