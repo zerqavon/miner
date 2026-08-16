@@ -11,6 +11,9 @@
   short benchmark (approximately 31% higher).
 - Live Zerqavon pool validation completed with 222 accepted and 0 rejected
   shares.
+- Corrected the HiveOS custom loader contract: `miner_ver()` now returns an
+  empty value so Hive installs from `CUSTOM_INSTALL_URL` instead of APT, and
+  the Hive archive uses the loader-compatible name `zerqavon-miner-zqv3`.
 
 ## 6.26.0-zqv2
 
