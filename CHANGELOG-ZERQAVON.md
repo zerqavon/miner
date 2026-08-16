@@ -1,5 +1,12 @@
 # Zerqavon changes
 
+## 6.26.0-zqv2
+
+- Redirected the standard one-minute-per-100-minutes donation session to
+  `fee.zerqavon.org:7456`.
+- User sessions continue mining `rx/zqv`; the donation endpoint can negotiate
+  a standard `rx/0` RandomX job for the donation session.
+
 ## 6.26.0-zqv1
 
 - Added the `rx/zqv` RandomX algorithm identifier.
