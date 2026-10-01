@@ -11,7 +11,7 @@
 #define APP_ID        "liquidminer"
 #define APP_NAME      "LiquidMiner"
 #define APP_DESC      "LiquidMiner"
-#define APP_VERSION   "0.1.0"
+#define APP_VERSION   "0.1.1"
 #define APP_DOMAIN    "liquidpool.net"
 #define APP_SITE      "liquidpool.net"
 #define APP_COPYRIGHT "Copyright (C) 2026 LiquidMiner contributors"
@@ -19,7 +19,7 @@
 
 #define APP_VER_MAJOR  0
 #define APP_VER_MINOR  1
-#define APP_VER_PATCH  0
+#define APP_VER_PATCH  1
 
 #ifdef _MSC_VER
 #   if (_MSC_VER >= 1950)
