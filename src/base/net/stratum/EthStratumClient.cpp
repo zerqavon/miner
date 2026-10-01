@@ -278,12 +278,12 @@ void xmrig::EthStratumClient::parseNotification(const char *method, const rapidj
         const double diff = arr[0].IsDouble() ? arr[0].GetDouble() : arr[0].GetUint64();
 
         if (isVextaStratum()) {
-            // Vexta's RandomX pool already reports the share difficulty in
-            // the same 64-bit target scale used by Job::setDiff().  Do not
-            // apply the Bitcoin/Eth proxy conversion here; that turns 5000
-            // into roughly 2.1475e13 and makes the displayed/required share
-            // difficulty incorrect.
-            m_nextDifficulty = std::max<uint64_t>(1, static_cast<uint64_t>(ceil(diff)));
+            // Vexta pools may deliberately use fractional difficulties for
+            // testing and for low-hashrate miners.  Keep the original value;
+            // rounding it to 1 makes a pool diff such as 5e-6 about 200,000
+            // times harder than intended.
+            m_nextVextaDifficulty = diff > 0.0 ? diff : 0.0;
+            m_nextDifficulty = diff > 0.0 ? static_cast<uint64_t>(ceil(diff)) : 0;
         }
         else if (m_pool.algorithm().id() == Algorithm::CIVICLIGHT) {
             // CivicLight uses Bitcoin-style Stratum difficulty where diff 1
@@ -448,7 +448,12 @@ void xmrig::EthStratumClient::parseNotification(const char *method, const rapidj
                 }
             }
 
-            job.setDiff(m_nextDifficulty);
+            if (isVextaStratum()) {
+                job.setDiff(m_nextVextaDifficulty);
+            }
+            else {
+                job.setDiff(m_nextDifficulty);
+            }
         }
         else
 #       endif

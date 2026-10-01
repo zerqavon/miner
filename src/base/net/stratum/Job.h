@@ -63,6 +63,7 @@ public:
     bool setTarget(const char *target);
     size_t nonceOffset() const;
     void setDiff(uint64_t diff);
+    void setDiff(double diff);
     bool checkHash(const uint8_t *hash) const;
     void setSigKey(const char *sig_key);
 

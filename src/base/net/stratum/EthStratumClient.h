@@ -73,6 +73,7 @@ private:
 #   ifdef XMRIG_ALGO_GHOSTRIDER
     uint64_t m_extraNonce2Size = 0;
     uint64_t m_nextDifficulty = 0;
+    double m_nextVextaDifficulty = 0.0;
     String m_ntime;
 #   endif
 };

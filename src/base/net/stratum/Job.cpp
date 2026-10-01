@@ -25,6 +25,7 @@
  */
 
 #include <cassert>
+#include <cmath>
 #include <cstring>
 
 #if defined(_MSC_VER)
@@ -224,7 +225,11 @@ void xmrig::Job::setDiff(uint64_t diff)
     if (algorithm() == Algorithm::RX_VEXTA && diff != 0) {
         // Vexta uses the reference miner's 256-bit little-endian check:
         // hash <= Diff1 / difficulty. The regular fast path is only 64-bit.
-        static constexpr uint8_t diff1[32] = { 0, 0, 0, 0xff, 0xff };
+        // Vexta's reference Diff1 is the 58-hex-digit value
+        // 00ffff0000..., interpreted as a positive big-endian integer and
+        // compared against the RandomX result as unsigned little-endian.
+        // Its little-endian 256-bit limb is therefore 0x00000000ffff0000.
+        static constexpr uint8_t diff1[32] = { 0, 0, 0, 0, 0xff, 0xff };
 
         uint64_t target[4] = { 0, 0, 0, 0 };
         for (size_t i = 0; i < 4; ++i) {
@@ -244,6 +249,68 @@ void xmrig::Job::setDiff(uint64_t diff)
 #   ifdef XMRIG_PROXY_PROJECT
     Cvt::toHex(m_rawTarget, sizeof(m_rawTarget), reinterpret_cast<uint8_t *>(&m_target), sizeof(m_target));
 #   endif
+}
+
+
+void xmrig::Job::setDiff(double diff)
+{
+    if (algorithm() != Algorithm::RX_VEXTA) {
+        setDiff(diff > 0.0 ? static_cast<uint64_t>(ceil(diff)) : 0);
+        return;
+    }
+
+    m_diff = diff > 0.0 ? static_cast<uint64_t>(ceil(diff)) : 0;
+    m_target = 0;
+
+    if (diff <= 0.0) {
+        memset(m_vextaTarget, 0, sizeof(m_vextaTarget));
+        return;
+    }
+
+    // The Vexta reference miner uses:
+    //   BigInteger("00ffff...", hex) / difficulty
+    // and interprets the RandomX output as an unsigned little-endian integer.
+    // Use fixed-point difficulty so values such as 5E-06 are represented
+    // exactly enough without relying on a floating-point 256-bit conversion.
+    constexpr uint64_t scale = 1000000000000ULL;
+    uint64_t scaled = static_cast<uint64_t>(diff * static_cast<double>(scale) + 0.5);
+    scaled = std::max<uint64_t>(1, scaled);
+
+    // Diff1 = 00ffff0000... (the 256-bit Vexta/Bitcoin diff-1 target), in
+    // little-endian 64-bit limbs.
+    static constexpr uint64_t diff1[4] = {
+        0x0000000000000000ULL,
+        0x0000000000000000ULL,
+        0x0000000000000000ULL,
+        0x00000000ffff0000ULL
+    };
+
+    uint64_t numerator[5] = { 0, 0, 0, 0, 0 };
+    uint64_t carry = 0;
+    for (size_t i = 0; i < 4; ++i) {
+#if defined(_MSC_VER)
+        uint64_t high;
+        uint64_t low = _umul128(diff1[i], scale, &high);
+        const uint64_t old = low;
+        low += carry;
+        high += low < old ? 1 : 0;
+        numerator[i] = low;
+        carry = high;
+#else
+        const unsigned __int128 product = static_cast<unsigned __int128>(diff1[i]) * scale + carry;
+        numerator[i] = static_cast<uint64_t>(product);
+        carry = static_cast<uint64_t>(product >> 64);
+#endif
+    }
+    numerator[4] = carry;
+
+    uint64_t quotient[5] = { 0, 0, 0, 0, 0 };
+    uint64_t remainder = 0;
+    for (int i = 4; i >= 0; --i) {
+        quotient[i] = divide128by64(remainder, numerator[i], scaled, remainder);
+    }
+
+    memcpy(m_vextaTarget, quotient, sizeof(m_vextaTarget));
 }
 
 
