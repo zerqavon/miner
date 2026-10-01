@@ -51,10 +51,10 @@ inline static void printCount(uint64_t accepted, uint64_t rejected)
         color       = 3;
     }
 
-    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-17s") CSI "1;3%dm%" PRIu64 CLEAR CSI "0;3%dm (%1.1f%%)", "accepted", color, accepted, color, percent);
+    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-17s") CSI "1;3%dm%" PRIu64 CLEAR CSI "0;3%dm (%1.1f%%)", "Yay!", color, accepted, color, percent);
 
     if (rejected) {
-        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-17s") RED_BOLD("%" PRIu64), "rejected", rejected);
+        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-17s") RED_BOLD("%" PRIu64), "Oops!", rejected);
     }
 }
 

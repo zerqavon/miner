@@ -45,11 +45,17 @@ protected:
     void build() override;
     void init() override;
     void jobEarlyNotification(const Job& job) override;
-    uint32_t processedHashes() const override { return m_intensity - m_skippedHashes; }
+    uint32_t roundSize() const override { return m_tunedIntensity; }
+    uint32_t processedHashes() const override { return m_tunedIntensity - m_skippedHashes; }
 
 private:
+    void autotune(uint64_t period, uint64_t target, uint8_t *blob);
+    bool setSearchArgs(cl_kernel kernel, uint64_t target);
+
     uint8_t* m_blob = nullptr;
     uint32_t m_skippedHashes = 0;
+    uint32_t m_tunedIntensity = 0;
+    bool m_autotuned = false;
 
     uint32_t m_blockHeight = 0;
     uint32_t m_epoch = 0xFFFFFFFFUL;

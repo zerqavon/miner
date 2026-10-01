@@ -17,6 +17,8 @@
  */
 
 #include <stdexcept>
+#include <array>
+#include <limits>
 
 
 #include "backend/opencl/runners/OclKawPowRunner.h"
@@ -44,6 +46,8 @@ constexpr size_t BLOB_SIZE = 40;
 
 OclKawPowRunner::OclKawPowRunner(size_t index, const OclLaunchData &data) : OclBaseRunner(index, data)
 {
+    m_tunedIntensity = static_cast<uint32_t>(m_intensity);
+
     switch (data.thread.worksize())
     {
     case 64:
@@ -57,6 +61,9 @@ OclKawPowRunner::OclKawPowRunner(size_t index, const OclLaunchData &data) : OclB
     if (data.device.vendorId() == OclVendor::OCL_VENDOR_NVIDIA) {
         m_options += " -DPLATFORM=OPENCL_PLATFORM_NVIDIA";
         m_dagWorkGroupSize = 32;
+    }
+    else if (data.device.vendorId() == OclVendor::OCL_VENDOR_AMD) {
+        m_options += " -DPLATFORM=OPENCL_PLATFORM_AMD -cl-mad-enable -cl-no-signed-zeros";
     }
 }
 
@@ -126,7 +133,7 @@ void OclKawPowRunner::set(const Job &job, uint8_t *blob)
         OclLib::release(m_dag);
 
         m_dagCapacity = VirtualMemory::align(dag_size, 16 * 1024 * 1024);
-        m_dag = OclLib::createBuffer(m_ctx, CL_MEM_READ_WRITE, m_dagCapacity);
+        m_dag = OclLib::createBuffer(m_ctx, CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, m_dagCapacity);
     }
 
     if (epoch != m_epoch) {
@@ -165,17 +172,13 @@ void OclKawPowRunner::set(const Job &job, uint8_t *blob)
         LOG_INFO("%s " YELLOW("KawPow") " DAG for epoch " WHITE_BOLD("%u") " calculated " BLACK_BOLD("(%" PRIu64 "ms)"), Tags::opencl(), epoch, Chrono::steadyMSecs() - start_ms);
     }
 
-    const uint64_t target = job.target();
-    const uint32_t hack_false = 0;
-
-    OclLib::setKernelArg(m_searchKernel, 0, sizeof(cl_mem), &m_dag);
-    OclLib::setKernelArg(m_searchKernel, 1, sizeof(cl_mem), &m_input);
-    OclLib::setKernelArg(m_searchKernel, 2, sizeof(target), &target);
-    OclLib::setKernelArg(m_searchKernel, 3, sizeof(hack_false), &hack_false);
-    OclLib::setKernelArg(m_searchKernel, 4, sizeof(cl_mem), &m_output);
-    OclLib::setKernelArg(m_searchKernel, 5, sizeof(cl_mem), &m_stop);
-
     m_blob = blob;
+    const uint64_t target = job.target();
+    autotune(m_blockHeight / KPHash::PERIOD_LENGTH, target, blob);
+    if (!setSearchArgs(m_searchKernel, target)) {
+        throw std::runtime_error("failed to set KawPow OpenCL kernel arguments");
+    }
+
     enqueueWriteBuffer(m_input, CL_TRUE, 0, BLOB_SIZE, m_blob);
 }
 
@@ -203,7 +206,81 @@ void xmrig::OclKawPowRunner::init()
     OclBaseRunner::init();
 
     m_controlQueue = OclLib::createCommandQueue(m_ctx, data().device.id());
-    m_stop = OclLib::createBuffer(m_ctx, CL_MEM_READ_ONLY, sizeof(uint32_t) * 2);
+    m_stop = OclLib::createBuffer(m_ctx, CL_MEM_READ_WRITE, sizeof(uint32_t) * 2);
+}
+
+
+bool OclKawPowRunner::setSearchArgs(cl_kernel kernel, uint64_t target)
+{
+    const uint32_t hack_false = 0;
+
+    return OclLib::setKernelArg(kernel, 0, sizeof(cl_mem), &m_dag) == CL_SUCCESS &&
+           OclLib::setKernelArg(kernel, 1, sizeof(cl_mem), &m_input) == CL_SUCCESS &&
+           OclLib::setKernelArg(kernel, 2, sizeof(target), &target) == CL_SUCCESS &&
+           OclLib::setKernelArg(kernel, 3, sizeof(hack_false), &hack_false) == CL_SUCCESS &&
+           OclLib::setKernelArg(kernel, 4, sizeof(cl_mem), &m_output) == CL_SUCCESS &&
+           OclLib::setKernelArg(kernel, 5, sizeof(cl_mem), &m_stop) == CL_SUCCESS;
+}
+
+
+void OclKawPowRunner::autotune(uint64_t period, uint64_t target, uint8_t *blob)
+{
+    if (m_autotuned) {
+        return;
+    }
+
+    m_autotuned = true;
+    m_blob = blob;
+
+    // Probe only workgroup size here. The nonce window remains controlled by
+    // the configured intensity so pool/job accounting is unchanged.
+    constexpr uint32_t probe_hashes = 1U << 20;
+    constexpr std::array<size_t, 4> candidates = { 64, 128, 256, 512 };
+
+    uint64_t best_time = std::numeric_limits<uint64_t>::max();
+    cl_kernel best_kernel = nullptr;
+    size_t best_worksize = m_workGroupSize;
+
+    LOG_INFO("%s " YELLOW("KawPow") " autotuning GPU workgroup", Tags::opencl());
+
+    for (const size_t worksize : candidates) {
+        const uint32_t global_size = probe_hashes - (probe_hashes % static_cast<uint32_t>(worksize));
+        const cl_kernel kernel = OclKawPow::get(*this, period * KPHash::PERIOD_LENGTH, worksize);
+        if (kernel == nullptr || global_size == 0 || !setSearchArgs(kernel, target)) {
+            continue;
+        }
+
+        const uint32_t zero[2] = {};
+        enqueueWriteBuffer(m_input, CL_FALSE, 0, BLOB_SIZE, m_blob);
+        enqueueWriteBuffer(m_output, CL_FALSE, 0, sizeof(uint32_t), zero);
+        enqueueWriteBuffer(m_stop, CL_FALSE, 0, sizeof(zero), zero);
+
+        const uint64_t start = Chrono::steadyMSecs();
+        const size_t offset = 0;
+        const size_t global = global_size;
+        const cl_int ret = OclLib::enqueueNDRangeKernel(m_queue, kernel, 1, &offset, &global, &worksize, 0, nullptr, nullptr);
+        if (ret != CL_SUCCESS || OclLib::finish(m_queue) != CL_SUCCESS) {
+            continue;
+        }
+
+        const uint64_t elapsed = Chrono::steadyMSecs() - start;
+        uint32_t output[16] = {};
+        enqueueReadBuffer(m_output, CL_TRUE, 0, sizeof(output), output);
+
+        LOG_INFO("%s " YELLOW("KawPow") " workgroup %zu: %" PRIu64 " ms", Tags::opencl(), worksize, elapsed);
+
+        if (elapsed < best_time) {
+            best_time = elapsed;
+            best_kernel = kernel;
+            best_worksize = worksize;
+        }
+    }
+
+    if (best_kernel != nullptr) {
+        m_workGroupSize = best_worksize;
+        m_searchKernel = best_kernel;
+        LOG_INFO("%s " YELLOW("KawPow") " autotune selected workgroup %zu", Tags::opencl(), m_workGroupSize);
+    }
 }
 
 } // namespace xmrig

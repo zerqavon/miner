@@ -65,7 +65,7 @@ extern template class Threads<CudaThreads>;
 
 
 constexpr const size_t oneMiB   = 1024U * 1024U;
-static const char *kLabel       = "CUDA";
+static const char *kLabel       = "NVIDIA";
 static const String kType       = "cuda";
 static std::mutex mutex;
 
@@ -186,7 +186,7 @@ public:
 
         for (const CudaDevice &device : devices) {
             Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") CYAN_BOLD("#%zu") YELLOW(" %s") GREEN_BOLD(" %s ") WHITE_BOLD("%u/%u MHz") " smx:" WHITE_BOLD("%u") " arch:" WHITE_BOLD("%u%u") " mem:" CYAN("%zu/%zu") " MB",
-                       "CUDA GPU",
+                       "GPU/CUDA",
                        device.index(),
                        device.topology().toString().data(),
                        device.name().data(),
@@ -329,7 +329,12 @@ bool xmrig::CudaBackend::isEnabled() const
 
 bool xmrig::CudaBackend::isEnabled(const Algorithm &algorithm) const
 {
-    return !d_ptr->controller->config()->cuda().threads().get(algorithm).isEmpty();
+    return (algorithm.family() == Algorithm::RANDOM_X ||
+            algorithm.family() == Algorithm::KAWPOW ||
+            algorithm.family() == Algorithm::XELISHASH_FAMILY ||
+            algorithm.family() == Algorithm::NEXAPOW_FAMILY ||
+            algorithm.family() == Algorithm::OGGPOW_FAMILY) &&
+           !d_ptr->controller->config()->cuda().threads().get(algorithm).isEmpty();
 }
 
 
@@ -389,7 +394,7 @@ void xmrig::CudaBackend::printHashrate(bool details)
         h = "MH/s";
     }
 
-    Log::print(WHITE_BOLD_S "|   CUDA # | AFFINITY | 10s %s | 60s %s | 15m %s |", h, h, h);
+    Log::print(WHITE_BOLD_S "| GPU/CUDA # | AFFINITY | 10s %s | 60s %s | 15m %s |", h, h, h);
 
     size_t i = 0;
     for (const auto& data : d_ptr->threads) {

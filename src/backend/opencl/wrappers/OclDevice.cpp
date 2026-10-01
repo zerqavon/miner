@@ -52,12 +52,10 @@ extern bool ocl_generic_rx_generator(const OclDevice &device, const Algorithm &a
 #endif
 
 #ifdef XMRIG_ALGO_KAWPOW
-extern bool ocl_generic_kawpow_generator(const OclDevice& device, const Algorithm& algorithm, OclThreads& threads);
+extern bool ocl_generic_kawpow_generator(const OclDevice &device, const Algorithm &algorithm, OclThreads &threads);
 #endif
 
-extern bool ocl_vega_cn_generator(const OclDevice &device, const Algorithm &algorithm, OclThreads &threads);
-extern bool ocl_generic_cn_generator(const OclDevice &device, const Algorithm &algorithm, OclThreads &threads);
-
+extern bool ocl_generic_gpupow_generator(const OclDevice &device, const Algorithm &algorithm, OclThreads &threads);
 
 static ocl_gen_config_fun generators[] = {
 #   ifdef XMRIG_ALGO_RANDOMX
@@ -66,8 +64,7 @@ static ocl_gen_config_fun generators[] = {
 #   ifdef XMRIG_ALGO_KAWPOW
     ocl_generic_kawpow_generator,
 #   endif
-    ocl_vega_cn_generator,
-    ocl_generic_cn_generator
+    ocl_generic_gpupow_generator,
 };
 
 
@@ -226,6 +223,15 @@ xmrig::OclDevice::Type xmrig::OclDevice::getType(const String &name)
         { "gfx1011",    Navi_12 },
         { "gfx1012",    Navi_14 },
         { "gfx1030",    Navi_21 },
+        { "gfx1031",    Navi_21 },
+        { "gfx1032",    Navi_21 },
+        { "gfx1034",    Navi_21 },
+        { "gfx1035",    Navi_21 },
+        { "gfx1100",    Navi_31 },
+        { "gfx1101",    Navi_32 },
+        { "gfx1102",    Navi_33 },
+        { "gfx1200",    Navi_44 },
+        { "gfx1201",    Navi_48 },
         { "gfx804",     Lexa },
         { "Baffin",     Baffin },
         { "Ellesmere",  Ellesmere },

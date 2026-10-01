@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-# https://xmrig.com/docs/miner/hugepages#onegb-huge-pages
+# LiquidMiner/RandomX 1GB huge pages helper
 
 sysctl -w vm.nr_hugepages=$(nproc)
 

@@ -1,6 +1,7 @@
 #include <windows.h>
 #include "../src/version.h"
 
+// LiquidMiner Windows executable resources.
 101 ICON "app.ico"
 
 VS_VERSION_INFO VERSIONINFO
@@ -24,7 +25,7 @@ VS_VERSION_INFO VERSIONINFO
         VALUE "FileDescription",  APP_DESC
         VALUE "FileVersion",      APP_VERSION
         VALUE "LegalCopyright",   APP_COPYRIGHT
-        VALUE "OriginalFilename", "xmrig.exe"
+        VALUE "OriginalFilename", "liquidminer.exe"
         VALUE "ProductName",      APP_NAME
         VALUE "ProductVersion",   APP_VERSION
       END

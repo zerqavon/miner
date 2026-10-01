@@ -57,7 +57,9 @@ xmrig::OclRxBaseRunner::OclRxBaseRunner(size_t index, const OclLaunchData &data)
         m_gcn_version = 14;
     }
 
-    if (data.device.type() == OclDevice::Navi_10 || data.device.type() == OclDevice::Navi_12 || data.device.type() == OclDevice::Navi_14 || data.device.type() == OclDevice::Navi_21) {
+    if (data.device.type() == OclDevice::Navi_10 || data.device.type() == OclDevice::Navi_12 || data.device.type() == OclDevice::Navi_14 ||
+        data.device.type() == OclDevice::Navi_21 || data.device.type() == OclDevice::Navi_31 || data.device.type() == OclDevice::Navi_32 ||
+        data.device.type() == OclDevice::Navi_33 || data.device.type() == OclDevice::Navi_44 || data.device.type() == OclDevice::Navi_48) {
         m_gcn_version = 15;
     }
 

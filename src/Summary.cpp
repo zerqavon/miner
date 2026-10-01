@@ -72,14 +72,14 @@ inline static const char *asmName(Assembly::Id assembly)
 static void print_pages(const Config *config)
 {
     Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") "%s",
-               "HUGE PAGES", config->cpu().isHugePages() ? (VirtualMemory::isHugepagesAvailable() ? kHugepagesSupported : RED_BOLD("unavailable")) : RED_BOLD("disabled"));
+               "BOOST MEM", config->cpu().isHugePages() ? (VirtualMemory::isHugepagesAvailable() ? kHugepagesSupported : RED_BOLD("unavailable")) : RED_BOLD("disabled"));
 
 #   ifdef XMRIG_ALGO_RANDOMX
 #   ifdef XMRIG_OS_LINUX
     Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") "%s",
-               "1GB PAGES", (VirtualMemory::isOneGbPagesAvailable() ? (config->rx().isOneGbPages() ? kHugepagesSupported : YELLOW_BOLD("disabled")) : YELLOW_BOLD("unavailable")));
+               "1GB BOOST", (VirtualMemory::isOneGbPagesAvailable() ? (config->rx().isOneGbPages() ? kHugepagesSupported : YELLOW_BOLD("disabled")) : YELLOW_BOLD("unavailable")));
 #   else
-    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") "%s", "1GB PAGES", YELLOW_BOLD("unavailable"));
+    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") "%s", "1GB BOOST", YELLOW_BOLD("unavailable"));
 #   endif
 #   endif
 }
@@ -90,7 +90,7 @@ static void print_cpu(const Config *)
     const auto info = Cpu::info();
 
     Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s%s (%zu)") " %s %s%sAES%s",
-               "CPU",
+               "ENGINE",
                info->brand(),
                info->packages(),
                ICpuInfo::is64bit()    ? GREEN_BOLD("64-bit") : RED_BOLD("32-bit"),
@@ -128,7 +128,7 @@ static void print_memory(const Config *config)
     const double percent = freeMem > 0 ? ((totalMem - freeMem) / totalMem * 100.0) : 100.0;
 
     Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") CYAN_BOLD("%.1f/%.1f") CYAN(" GB") BLACK_BOLD(" (%.0f%%)"),
-               "MEMORY",
+               "RAM",
                (totalMem - freeMem) / oneGiB,
                totalMem / oneGiB,
                percent
@@ -163,7 +163,7 @@ static void print_memory(const Config *config)
     const auto &board = Cpu::info()->isVM() ? reader.system() : reader.board();
 
     if (board.isValid()) {
-        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") WHITE_BOLD("%s") " - " WHITE_BOLD("%s"), "MOTHERBOARD", board.vendor().data(), board.product().data());
+        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") WHITE_BOLD("%s") " - " WHITE_BOLD("%s"), "BOARD", board.vendor().data(), board.product().data());
     }
 #   endif
 }
@@ -172,7 +172,7 @@ static void print_memory(const Config *config)
 static void print_threads(const Config *config)
 {
     Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") WHITE_BOLD("%s%d%%"),
-               "DONATE",
+               "FEE",
                config->pools().donateLevel() == 0 ? RED_BOLD_S : "",
                config->pools().donateLevel()
                );
@@ -181,10 +181,10 @@ static void print_threads(const Config *config)
     if (config->cpu().assembly() == Assembly::AUTO) {
         const Assembly assembly = Cpu::info()->assembly();
 
-        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13sauto:%s"), "ASSEMBLY", asmName(assembly));
+        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13sauto:%s"), "TUNE", asmName(assembly));
     }
     else {
-        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s%s"), "ASSEMBLY", asmName(config->cpu().assembly()));
+        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s%s"), "TUNE", asmName(config->cpu().assembly()));
     }
 #   endif
 }
@@ -193,7 +193,7 @@ static void print_threads(const Config *config)
 static void print_commands(Config *)
 {
     if (Log::isColors()) {
-        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("COMMANDS     ") MAGENTA_BG_BOLD("h") WHITE_BOLD("ashrate, ")
+        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("HOTKEYS      ") MAGENTA_BG_BOLD("h") WHITE_BOLD("ashrate, ")
                                                                  MAGENTA_BG_BOLD("p") WHITE_BOLD("ause, ")
                                                                  MAGENTA_BG_BOLD("r") WHITE_BOLD("esume, ")
                                                                  WHITE_BOLD("re") MAGENTA_BG(WHITE_BOLD_S "s") WHITE_BOLD("ults, ")
@@ -201,7 +201,7 @@ static void print_commands(Config *)
                    );
     }
     else {
-        Log::print(" * COMMANDS     'h' hashrate, 'p' pause, 'r' resume, 's' results, 'c' connection");
+        Log::print(" * HOTKEYS      'h' hashrate, 'p' pause, 'r' resume, 's' results, 'c' connection");
     }
 }
 

@@ -25,6 +25,8 @@
 
 #include "backend/opencl/cl/OclSource.h"
 #include "backend/opencl/cl/cn/cryptonight_cl.h"
+#include "xelishash_v3_cl.h"
+#include "nexapow_sha_cl.h"
 #include "base/crypto/Algorithm.h"
 
 
@@ -51,6 +53,14 @@ const char *xmrig::OclSource::get(const Algorithm &algorithm)
         return kawpow_dag_cl;
     }
 #   endif
+
+    if (algorithm.family() == Algorithm::XELISHASH_FAMILY) {
+        return xelishash_v3_cl;
+    }
+
+    if (algorithm.family() == Algorithm::NEXAPOW_FAMILY) {
+        return nexapow_sha_cl;
+    }
 
     return cryptonight_cl;
 }

@@ -41,6 +41,7 @@ protected:
     int64_t submit(const JobResult &result) override;
     void login() override;
     void onClose() override;
+    void tick(uint64_t now) override;
 
     bool handleResponse(int64_t id, const rapidjson::Value &result, const rapidjson::Value &error) override;
     void parseNotification(const char *method, const rapidjson::Value &params, const rapidjson::Value &error) override;
@@ -52,14 +53,21 @@ protected:
 #   endif
 
 private:
+    bool isVextaStratum() const;
     static const char *errorMessage(const rapidjson::Value &error);
 
     void authorize();
+    void oggLogin();
+    void requestOggWork();
+    void onOggLoginResponse(const rapidjson::Value &result, bool success, uint64_t elapsed);
+    void onOggWorkResponse(const rapidjson::Value &result, bool success, uint64_t elapsed);
     void onAuthorizeResponse(const rapidjson::Value &result, bool success, uint64_t elapsed);
     void onSubscribeResponse(const rapidjson::Value &result, bool success, uint64_t elapsed);
     void subscribe();
 
     bool m_authorized   = false;
+    bool m_oggProxyMode = false;
+    uint64_t m_nextOggWork = 0;
     std::pair<uint64_t, String> m_extraNonce{};
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER

@@ -20,6 +20,8 @@
 #define XMRIG_MINER_H
 
 
+#include <cstddef>
+#include <cstdint>
 #include <vector>
 
 
@@ -52,11 +54,19 @@ public:
     bool isEnabled(const Algorithm &algorithm) const;
     const Algorithms &algorithms() const;
     const std::vector<IBackend *> &backends() const;
+    bool isMajorityPool(uint8_t poolId) const;
+    bool isDualCpuSplit() const;
+    int activePool() const;
     Job job() const;
+    Job job(bool gpu) const;
+    Job job(size_t workerId, int64_t affinity) const;
+    Job job(size_t workerId, int64_t affinity, int8_t poolId) const;
+    Job poolJob(uint8_t poolId) const;
     void execCommand(char command);
     void pause();
     void setEnabled(bool enabled);
     void setJob(const Job &job, bool donate);
+    void switchPool(uint8_t acceptedPoolId);
     void stop();
 
 protected:

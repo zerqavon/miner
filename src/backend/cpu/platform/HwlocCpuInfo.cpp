@@ -208,6 +208,14 @@ bool xmrig::HwlocCpuInfo::membind(hwloc_const_bitmap_t nodeset)
 xmrig::CpuThreads xmrig::HwlocCpuInfo::threads(const Algorithm &algorithm, uint32_t limit) const
 {
 #   if !defined(XMRIG_ARM) && !defined(XMRIG_RISCV)
+    if (algorithm.family() == Algorithm::CIVICLIGHT_FAMILY) {
+        return allThreads(algorithm, limit);
+    }
+
+    if (algorithm == Algorithm::RX_VEXTA) {
+        return allThreads(algorithm, limit);
+    }
+
     if (L2() == 0 && L3() == 0) {
         return BasicCpuInfo::threads(algorithm, limit);
     }
@@ -261,8 +269,17 @@ xmrig::CpuThreads xmrig::HwlocCpuInfo::allThreads(const Algorithm &algorithm, ui
     threads.reserve(m_threads);
 
     const uint32_t intensity = (algorithm.family() == Algorithm::GHOSTRIDER) ? 8 : 0;
+    size_t count = m_units.size();
+
+    if (limit > 0 && limit < 100) {
+        count = std::max<size_t>((count * limit + 50) / 100, 1);
+    }
 
     for (const int32_t pu : m_units) {
+        if (threads.count() >= count) {
+            break;
+        }
+
         threads.add(pu, intensity);
     }
 

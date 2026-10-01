@@ -50,6 +50,7 @@ bool ocl_generic_rx_generator(const OclDevice &device, const Algorithm &algorith
     auto config      = RxAlgo::base(algorithm);
     bool gcnAsm      = false;
     bool isNavi      = false;
+    bool isUnknownAmd = device.vendorId() == OCL_VENDOR_AMD;
 
     switch (device.type()) {
     case OclDevice::Baffin:
@@ -59,6 +60,7 @@ bool ocl_generic_rx_generator(const OclDevice &device, const Algorithm &algorith
     case OclDevice::Vega_10:
     case OclDevice::Vega_20:
         gcnAsm = true;
+        isUnknownAmd = false;
         break;
 
     case OclDevice::Navi_10:
@@ -66,10 +68,17 @@ bool ocl_generic_rx_generator(const OclDevice &device, const Algorithm &algorith
     case OclDevice::Navi_14:
         gcnAsm = true;
         isNavi = true;
+        isUnknownAmd = false;
         break;
 
     case OclDevice::Navi_21:
+    case OclDevice::Navi_31:
+    case OclDevice::Navi_32:
+    case OclDevice::Navi_33:
+    case OclDevice::Navi_44:
+    case OclDevice::Navi_48:
         isNavi = true;
+        isUnknownAmd = false;
         break;
 
     default:
@@ -88,7 +97,7 @@ bool ocl_generic_rx_generator(const OclDevice &device, const Algorithm &algorith
     uint32_t intensity = static_cast<uint32_t>((mem - (datasetHost ? 0 : dataset_mem)) / per_thread_mem / 2);
 
     // Too high intensity makes hashrate worse
-    const uint32_t intensityCoeff = isNavi ? 64 : 16;
+    const uint32_t intensityCoeff = isUnknownAmd ? 32 : (isNavi ? 64 : 16);
     if (intensity > device.computeUnits() * intensityCoeff) {
         intensity = device.computeUnits() * intensityCoeff;
     }
@@ -106,7 +115,10 @@ bool ocl_generic_rx_generator(const OclDevice &device, const Algorithm &algorith
         return false;
     }
 
-    threads.add(OclThread(device.index(), intensity, 8, device.vendorId() == OCL_VENDOR_AMD ? 2 : 1, gcnAsm, datasetHost, 6));
+    const uint32_t rxThreads = (device.vendorId() == OCL_VENDOR_AMD && !isUnknownAmd) ? 2 : 1;
+    const uint32_t bfactor   = isUnknownAmd ? 8 : 6;
+
+    threads.add(OclThread(device.index(), intensity, 8, rxThreads, gcnAsm, datasetHost, bfactor));
 
     return true;
 }

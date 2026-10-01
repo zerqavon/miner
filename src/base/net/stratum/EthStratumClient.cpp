@@ -60,7 +60,8 @@ int64_t xmrig::EthStratumClient::submit(const JobResult& result)
     }
 #   endif
 
-    if (result.diff == 0) {
+    const uint64_t requiredDiff = (m_oggProxyMode && result.diff == 0) ? m_job.diff() : result.diff;
+    if (requiredDiff == 0) {
         LOG_ERR("%s " RED("result.diff is 0"), tag());
         close();
 
@@ -73,11 +74,47 @@ int64_t xmrig::EthStratumClient::submit(const JobResult& result)
     auto& allocator = doc.GetAllocator();
 
     Value params(kArrayType);
+
+    // Oggchain's official pool exposes the eth-proxy (stratum1) API.  It
+    // does not accept mining.submit and does not use a subscription response;
+    // solutions are submitted as eth_submitWork(header nonce, header, mix).
+    if (m_oggProxyMode) {
+        std::stringstream s;
+        s << "0x" << std::hex << std::setw(16) << std::setfill('0') << result.nonce;
+        params.PushBack(Value(s.str().c_str(), allocator), allocator);
+
+        s.str(std::string());
+        s << "0x";
+        for (size_t i = 0; i < 32; ++i) {
+            s << std::hex << std::setw(2) << std::setfill('0') << static_cast<unsigned>(result.headerHash()[i]);
+        }
+        params.PushBack(Value(s.str().c_str(), allocator), allocator);
+
+        s.str(std::string());
+        s << "0x";
+        for (size_t i = 0; i < 32; ++i) {
+            s << std::hex << std::setw(2) << std::setfill('0') << static_cast<unsigned>(result.mixHash()[i]);
+        }
+        params.PushBack(Value(s.str().c_str(), allocator), allocator);
+
+        JsonRequest::create(doc, m_sequence, "eth_submitWork", params);
+
+        const uint64_t actual_diff = ethash_swap_u64(*((uint64_t*)result.result()));
+        const uint64_t share_diff = actual_diff ? (uint64_t(-1) / actual_diff) : 0;
+#       ifdef XMRIG_PROXY_PROJECT
+        m_results[m_sequence] = SubmitResult(m_sequence, requiredDiff, share_diff, result.id, 0, result.switchOnAccept);
+#       else
+        m_results[m_sequence] = SubmitResult(m_sequence, requiredDiff, share_diff, 0, result.backend, result.switchOnAccept);
+#       endif
+
+        return send(doc);
+    }
+
     params.PushBack(m_user.toJSON(), allocator);
     params.PushBack(result.jobId.toJSON(), allocator);
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
-    if (m_pool.algorithm().id() == Algorithm::GHOSTRIDER_RTM) {
+    if ((m_pool.algorithm().id() == Algorithm::GHOSTRIDER_RTM) || (m_pool.algorithm().id() == Algorithm::CIVICLIGHT) || isVextaStratum()) {
         params.PushBack(Value("00000000000000000000000000000000", static_cast<uint32_t>(m_extraNonce2Size * 2)), allocator);
         params.PushBack(Value(m_ntime.data(), allocator), allocator);
 
@@ -114,7 +151,7 @@ int64_t xmrig::EthStratumClient::submit(const JobResult& result)
     uint64_t actual_diff;
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
-    if (result.algorithm == Algorithm::GHOSTRIDER_RTM) {
+    if ((result.algorithm == Algorithm::GHOSTRIDER_RTM) || (result.algorithm == Algorithm::CIVICLIGHT) || isVextaStratum()) {
         actual_diff = reinterpret_cast<const uint64_t*>(result.result())[3];
     }
     else
@@ -126,9 +163,9 @@ int64_t xmrig::EthStratumClient::submit(const JobResult& result)
     actual_diff = actual_diff ? (uint64_t(-1) / actual_diff) : 0;
 
 #   ifdef XMRIG_PROXY_PROJECT
-    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, actual_diff, result.id, 0);
+    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, actual_diff, result.id, 0, result.switchOnAccept);
 #   else
-    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, actual_diff, 0, result.backend);
+    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, actual_diff, 0, result.backend, result.switchOnAccept);
 #   endif
 
     return send(doc);
@@ -139,6 +176,14 @@ void xmrig::EthStratumClient::login()
 {
     m_results.clear();
 
+    m_oggProxyMode = m_pool.algorithm().family() == Algorithm::OGGPOW_FAMILY;
+    m_nextOggWork = 0;
+
+    if (m_oggProxyMode) {
+        oggLogin();
+        return;
+    }
+
     subscribe();
     authorize();
 }
@@ -147,7 +192,19 @@ void xmrig::EthStratumClient::login()
 void xmrig::EthStratumClient::onClose()
 {
     m_authorized = false;
+    m_oggProxyMode = false;
+    m_nextOggWork = 0;
     Client::onClose();
+}
+
+
+void xmrig::EthStratumClient::tick(uint64_t now)
+{
+    Client::tick(now);
+
+    if (m_oggProxyMode && m_authorized && now >= m_nextOggWork) {
+        requestOggWork();
+    }
 }
 
 
@@ -202,7 +259,7 @@ void xmrig::EthStratumClient::parseNotification(const char *method, const rapidj
             return;
         }
 
-        if (m_pool.algorithm().id() != Algorithm::GHOSTRIDER_RTM) {
+        if ((m_pool.algorithm().id() != Algorithm::GHOSTRIDER_RTM) && (m_pool.algorithm().id() != Algorithm::CIVICLIGHT) && !isVextaStratum()) {
             return;
         }
 
@@ -219,7 +276,25 @@ void xmrig::EthStratumClient::parseNotification(const char *method, const rapidj
         }
 
         const double diff = arr[0].IsDouble() ? arr[0].GetDouble() : arr[0].GetUint64();
-        m_nextDifficulty = static_cast<uint64_t>(ceil(diff * 65536.0));
+
+        if (isVextaStratum()) {
+            // Vexta's RandomX pool already reports the share difficulty in
+            // the same 64-bit target scale used by Job::setDiff().  Do not
+            // apply the Bitcoin/Eth proxy conversion here; that turns 5000
+            // into roughly 2.1475e13 and makes the displayed/required share
+            // difficulty incorrect.
+            m_nextDifficulty = std::max<uint64_t>(1, static_cast<uint64_t>(ceil(diff)));
+        }
+        else if (m_pool.algorithm().id() == Algorithm::CIVICLIGHT) {
+            // CivicLight uses Bitcoin-style Stratum difficulty where diff 1
+            // targets one share per 2^32 hashes. XMRig's CPU submit check uses
+            // a 64-bit target, so convert pool difficulty to the equivalent
+            // internal difficulty scale.
+            m_nextDifficulty = std::max<uint64_t>(1, static_cast<uint64_t>(ceil(diff * 4295032833.000015)));
+        }
+        else {
+            m_nextDifficulty = static_cast<uint64_t>(ceil(diff * 65536.0));
+        }
     }
 #   endif
 
@@ -236,7 +311,7 @@ void xmrig::EthStratumClient::parseNotification(const char *method, const rapidj
             algo = m_pool.coin().algorithm();
         }
 
-        const size_t min_arr_size = (algo.id() == Algorithm::GHOSTRIDER_RTM) ? 8 : 6;
+        const size_t min_arr_size = ((algo.id() == Algorithm::GHOSTRIDER_RTM) || (algo.id() == Algorithm::CIVICLIGHT)) ? 8 : (isVextaStratum() ? 10 : 6);
 
         if (arr.Size() < min_arr_size) {
             LOG_ERR("%s " RED("invalid mining.notify notification: params array has wrong size"), tag());
@@ -257,7 +332,7 @@ void xmrig::EthStratumClient::parseNotification(const char *method, const rapidj
         std::stringstream s;
 
 #       ifdef XMRIG_ALGO_GHOSTRIDER
-        if (algo.id() == Algorithm::GHOSTRIDER_RTM) {
+        if ((algo.id() == Algorithm::GHOSTRIDER_RTM) || (algo.id() == Algorithm::CIVICLIGHT) || isVextaStratum()) {
             // Raptoreum uses Bitcoin's Stratum protocol
             // https://en.bitcoinwiki.org/wiki/Stratum_mining_protocol#mining.notify
 
@@ -350,7 +425,29 @@ void xmrig::EthStratumClient::parseNotification(const char *method, const rapidj
             }
             blob = Cvt::toHex(buf.data(), buf.size());
 
-            job.setBlob(blob.c_str());
+            if (!job.setBlob(blob.c_str())) {
+                LOG_ERR("%s " RED("invalid mining.notify notification: invalid block header"), tag());
+                return;
+            }
+
+            if (isVextaStratum()) {
+                // Vexta pools have used both orders in the wild:
+                // [.., ntime, clean_jobs, randomx_seed] and
+                // [.., ntime, randomx_seed, clean_jobs]. Accept either,
+                // while validating the seed as a 32-byte hex value.
+                bool validSeed = false;
+                if (arr[9].IsString()) {
+                    validSeed = job.setSeedHash(arr[9].GetString());
+                }
+                if (!validSeed && arr[8].IsString()) {
+                    validSeed = job.setSeedHash(arr[8].GetString());
+                }
+                if (!validSeed) {
+                    LOG_ERR("%s " RED("invalid mining.notify notification: Vexta RandomX seed is missing or invalid"), tag());
+                    return;
+                }
+            }
+
             job.setDiff(m_nextDifficulty);
         }
         else
@@ -442,6 +539,15 @@ void xmrig::EthStratumClient::setExtraNonce(const rapidjson::Value &nonce)
 }
 
 
+bool xmrig::EthStratumClient::isVextaStratum() const
+{
+    // LiquidPool publishes Vexta RandomX on 4513. The explicit algorithm
+    // alias keeps the protocol usable on other Vexta-compatible pools.
+    return m_pool.algorithm() == Algorithm::RX_VEXTA ||
+           (m_pool.algorithm().family() == Algorithm::RANDOM_X && m_pool.port() == 4513);
+}
+
+
 const char *xmrig::EthStratumClient::errorMessage(const rapidjson::Value &error)
 {
     if (error.IsArray() && error.GetArray().Size() > 1) {
@@ -460,6 +566,116 @@ const char *xmrig::EthStratumClient::errorMessage(const rapidjson::Value &error)
     }
 
     return nullptr;
+}
+
+
+void xmrig::EthStratumClient::oggLogin()
+{
+    using namespace rapidjson;
+
+    Document doc(kObjectType);
+    auto &allocator = doc.GetAllocator();
+    Value params(kArrayType);
+    params.PushBack(m_user.toJSON(), allocator);
+    params.PushBack(m_password.toJSON(), allocator);
+
+    JsonRequest::create(doc, m_sequence, "eth_submitLogin", params);
+    send(doc, [this](const Value &result, bool success, uint64_t elapsed) {
+        onOggLoginResponse(result, success, elapsed);
+    });
+}
+
+
+void xmrig::EthStratumClient::onOggLoginResponse(const rapidjson::Value &result, bool success, uint64_t)
+{
+    if (!success || (result.IsBool() && !result.GetBool())) {
+        const char *message = success ? "pool rejected eth_submitLogin" : errorMessage(result);
+        LOG_ERR("%s " RED_BOLD("%s"), tag(), message ? message : "eth_submitLogin failed");
+        close();
+        return;
+    }
+
+    m_authorized = true;
+    LOG_DEBUG("[%s] OggPoW eth-proxy login succeeded", url());
+    m_listener->onLoginSuccess(this);
+    requestOggWork();
+}
+
+
+void xmrig::EthStratumClient::requestOggWork()
+{
+    using namespace rapidjson;
+
+    m_nextOggWork = Chrono::steadyMSecs() + 1000;
+
+    Document doc(kObjectType);
+    Value params(kArrayType);
+    JsonRequest::create(doc, m_sequence, "eth_getWork", params);
+    send(doc, [this](const Value &result, bool success, uint64_t elapsed) {
+        onOggWorkResponse(result, success, elapsed);
+    });
+}
+
+
+void xmrig::EthStratumClient::onOggWorkResponse(const rapidjson::Value &result, bool success, uint64_t)
+{
+    if (!success || !result.IsArray() || result.Size() < 3 ||
+        !result[0].IsString() || !result[1].IsString() || !result[2].IsString()) {
+        LOG_ERR("%s " RED("invalid eth_getWork response"), tag());
+        return;
+    }
+
+    auto stripPrefix = [](const char *value) {
+        return (value && value[0] == '0' && value[1] == 'x') ? value + 2 : value;
+    };
+
+    const char *header = stripPrefix(result[0].GetString());
+    const char *seed = stripPrefix(result[1].GetString());
+    const char *target = stripPrefix(result[2].GetString());
+
+    // Job stores an Ethash-compatible 64-bit share target.  eth_getWork
+    // returns a 256-bit boundary, so retain its least-significant 64 bits,
+    // which is the compact target used by the GPU search kernel.
+    std::string compactTarget(target ? target : "");
+    if (compactTarget.size() > 16) {
+        compactTarget = compactTarget.substr(compactTarget.size() - 16);
+    }
+    if (compactTarget.size() < 16) {
+        compactTarget.insert(0, 16 - compactTarget.size(), '0');
+    }
+
+    Job job;
+    job.setAlgorithm(m_pool.algorithm());
+    job.setId(header);
+
+    std::string blob(header ? header : "");
+    blob += "00000000";
+    if (!job.setBlob(blob.c_str()) || !job.setSeedHash(seed) || !job.setTarget(compactTarget.c_str())) {
+        LOG_ERR("%s " RED("invalid OggPoW work data from eth_getWork"), tag());
+        return;
+    }
+
+    if (result.Size() > 3) {
+        if (result[3].IsUint64()) {
+            job.setHeight(result[3].GetUint64());
+        }
+        else if (result[3].IsString()) {
+            const char *height = result[3].GetString();
+            job.setHeight(strtoull(height, nullptr, 0));
+        }
+    }
+
+    bool ok = true;
+    m_listener->onVerifyAlgorithm(this, job.algorithm(), &ok);
+    if (!ok) {
+        LOG_ERR("%s incompatible OggPoW algorithm received", tag());
+        return;
+    }
+
+    if (m_job != job) {
+        m_job = std::move(job);
+        m_listener->onJobReceived(this, m_job, result);
+    }
 }
 
 

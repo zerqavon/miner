@@ -19,7 +19,6 @@
 
 #include "backend/opencl/OclWorker.h"
 #include "backend/common/Tags.h"
-#include "backend/opencl/runners/OclCnRunner.h"
 #include "backend/opencl/runners/tools/OclSharedData.h"
 #include "backend/opencl/runners/tools/OclSharedState.h"
 #include "base/io/log/Log.h"
@@ -37,7 +36,14 @@
 
 #ifdef XMRIG_ALGO_KAWPOW
 #   include "backend/opencl/runners/OclKawPowRunner.h"
+#   ifdef XMRIG_FEATURE_VULKAN_KAWPOW
+#   include "backend/vulkan/VulkanKawPowRunner.h"
+#   endif
 #endif
+
+#include "backend/opencl/runners/OclOggPowRunner.h"
+#include "backend/opencl/runners/OclXelisHashRunner.h"
+#include "backend/opencl/runners/OclNexaPowRunner.h"
 
 #include <cassert>
 #include <thread>
@@ -80,20 +86,39 @@ xmrig::OclWorker::OclWorker(size_t id, const OclLaunchData &data) :
 #       endif
         break;
 
-    case Algorithm::ARGON2:
-#       ifdef XMRIG_ALGO_ARGON2
-        m_runner = nullptr;
+    case Algorithm::KAWPOW:
+#       ifdef XMRIG_ALGO_KAWPOW
+        // Prefer the RDNA-optimized Vulkan path. OpenCL remains the
+        // compatibility fallback for devices without a Vulkan driver.
+        {
+#           ifdef XMRIG_FEATURE_VULKAN_KAWPOW
+            auto *vulkan = new VulkanKawPowRunner(id, data);
+            if (vulkan->available()) {
+                m_runner = vulkan;
+            }
+            else {
+                delete vulkan;
+                m_runner = new OclKawPowRunner(id, data);
+            }
+#           else
+            m_runner = new OclKawPowRunner(id, data);
+#           endif
+        }
 #       endif
         break;
 
-    case Algorithm::KAWPOW:
-#       ifdef XMRIG_ALGO_KAWPOW
-        m_runner = new OclKawPowRunner(id, data);
-#       endif
+    case Algorithm::OGGPOW_FAMILY:
+        m_runner = new OclOggPowRunner(id, data);
+        break;
+
+    case Algorithm::XELISHASH_FAMILY:
+        m_runner = new OclXelisHashRunner(id, data);
+        break;
+    case Algorithm::NEXAPOW_FAMILY:
+        m_runner = new OclNexaPowRunner(id, data);
         break;
 
     default:
-        m_runner = new OclCnRunner(id, data);
         break;
     }
 
@@ -203,7 +228,7 @@ bool xmrig::OclWorker::consumeJob()
         return false;
     }
 
-    m_job.add(m_miner->job(), intensity(), Nonce::OPENCL);
+    m_job.add(m_miner->job(true), intensity(), Nonce::OPENCL);
 
     try {
         m_runner->set(m_job.currentJob(), m_job.blob());

@@ -108,6 +108,10 @@ private:
     void parse(char *line, size_t len);
     void parseExtensions(const rapidjson::Value &result);
     void parseResponse(int64_t id, const rapidjson::Value &result, const rapidjson::Value &error);
+    bool isXelisStratum() const;
+    bool parseXelisNotify(const rapidjson::Value &params);
+    bool isNexaStratum() const;
+    bool parseNexaNotify(const rapidjson::Value &params);
     void ping();
     void read(ssize_t nread, const uv_buf_t *buf);
     void reconnect();
@@ -137,6 +141,15 @@ private:
     Tls *m_tls                  = nullptr;
     uint64_t m_expire           = 0;
     uint64_t m_jobs             = 0;
+    bool m_xelisAuthorized      = false;
+    String m_xelisExtraNonce;
+    String m_xelisPublicKey;
+    uint64_t m_xelisDiff        = 1;
+    bool m_nexaAuthorized       = false;
+    bool m_nexaLegacy           = false;
+    String m_nexaExtraNonce;
+    String m_nexaTime;
+    uint64_t m_nexaDiff         = 1;
     uint64_t m_keepAlive        = 0;
     uintptr_t m_key             = 0;
     uv_tcp_t *m_socket          = nullptr;

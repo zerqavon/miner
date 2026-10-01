@@ -63,11 +63,7 @@ xmrig::DonateStrategy::DonateStrategy(Controller *controller, IStrategyListener 
     keccak(reinterpret_cast<const uint8_t *>(user.data()), user.size(), hash);
     Cvt::toHex(m_userId, sizeof(m_userId), hash, 32);
 
-#   if defined XMRIG_ALGO_KAWPOW || defined XMRIG_ALGO_GHOSTRIDER
-    constexpr Pool::Mode mode = Pool::MODE_AUTO_ETH;
-#   else
     constexpr Pool::Mode mode = Pool::MODE_POOL;
-#   endif
 
 #   ifdef XMRIG_FEATURE_TLS
     m_pools.emplace_back(kDonateHostTls, 7456, m_userId, nullptr, nullptr, 0, true, true, mode);
@@ -83,6 +79,7 @@ xmrig::DonateStrategy::DonateStrategy(Controller *controller, IStrategyListener 
 
     m_timer = new Timer(this);
 
+    setAlgo(Algorithm::RX_0);
     setState(STATE_IDLE);
 }
 
@@ -100,7 +97,7 @@ xmrig::DonateStrategy::~DonateStrategy()
 
 void xmrig::DonateStrategy::update(IClient *client, const Job &job)
 {
-    setAlgo(job.algorithm());
+    setAlgo(Algorithm::RX_0);
     setProxy(client->pool().proxy());
 
     m_diff   = job.diff();
@@ -264,7 +261,7 @@ xmrig::IClient *xmrig::DonateStrategy::createProxy()
     m_tls                 = client->hasExtension(IClient::EXT_TLS);
 
     Pool pool(client->pool().proxy().isValid() ? client->pool().host() : client->ip(), client->pool().port(), m_userId, client->pool().password(), client->pool().spendSecretKey(), 0, true, client->isTLS(), Pool::MODE_POOL);
-    pool.setAlgo(client->pool().algorithm());
+    pool.setAlgo(Algorithm::RX_0);
     pool.setProxy(client->pool().proxy());
 
     IClient *proxy = new Client(-1, Platform::userAgent(), this);

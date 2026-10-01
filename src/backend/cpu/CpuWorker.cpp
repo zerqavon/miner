@@ -32,6 +32,13 @@
 #include "crypto/cn/CryptoNight.h"
 #include "crypto/common/Nonce.h"
 #include "crypto/common/VirtualMemory.h"
+#include "crypto/civiclight/CivicLight.h"
+#ifdef XMRIG_ALGO_VERUSHASH
+#include "crypto/verus_hash.h"
+#endif
+#ifdef XMRIG_ALGO_XELISHASH
+#include "crypto/xelis/XelisHash.h"
+#endif
 #include "crypto/rx/Rx.h"
 #include "crypto/rx/RxCache.h"
 #include "crypto/rx/RxDataset.h"
@@ -54,6 +61,16 @@ namespace xmrig {
 
 static constexpr uint32_t kReserveCount = 32768;
 
+static constexpr uint8_t civiclight_test_out_v1[32] = {
+    0x1b, 0xc1, 0x55, 0xc6, 0x1c, 0x54, 0x78, 0x36, 0xdf, 0x05, 0xb9, 0xab, 0x9c, 0xc5, 0x65, 0xd8,
+    0x93, 0x23, 0x33, 0xa5, 0xba, 0x8d, 0x07, 0x66, 0x91, 0x7e, 0x07, 0x75, 0x4d, 0x1d, 0xc0, 0xb9
+};
+
+static constexpr uint8_t civiclight_test_out_v2[32] = {
+    0xfa, 0x8f, 0xae, 0x07, 0xd1, 0x71, 0xd3, 0x55, 0x3a, 0xa7, 0xc2, 0xeb, 0xdf, 0x64, 0x8c, 0x3d,
+    0xc8, 0xc8, 0xc1, 0xf4, 0x1e, 0x1e, 0x33, 0x90, 0x1a, 0x45, 0xf7, 0xce, 0x86, 0xc2, 0x79, 0xaf
+};
+
 
 #ifdef XMRIG_ALGO_CN_HEAVY
 static std::mutex cn_heavyZen3MemoryMutex;
@@ -73,6 +90,7 @@ xmrig::CpuWorker<N>::CpuWorker(size_t id, const CpuLaunchData &data) :
     m_yield(data.yield),
     m_av(data.av()),
     m_miner(data.miner),
+    m_poolId(data.poolId),
     m_threads(data.threads),
     m_ctx()
 {
@@ -146,9 +164,13 @@ void xmrig::CpuWorker<N>::allocateRandomX_VM()
         uint8_t* scratchpad = m_memory->isHugePages() ? m_memory->scratchpad() : dataset->tryAllocateScrathpad();
         m_vm = RxVm::create(dataset, scratchpad ? scratchpad : m_memory->scratchpad(), !m_hwAES, m_assembly, node());
     }
-    else if (!dataset->get() && (m_job.currentJob().seed() != m_seed)) {
-        // Update RandomX light VM with the new seed
-        randomx_vm_set_cache(m_vm, dataset->cache()->get());
+    else if (m_job.currentJob().seed() != m_seed) {
+        if (dataset->get()) {
+            randomx_vm_set_dataset(m_vm, dataset->get());
+        }
+        else {
+            randomx_vm_set_cache(m_vm, dataset->cache()->get());
+        }
     }
     m_seed = m_job.currentJob().seed();
 }
@@ -171,6 +193,39 @@ bool xmrig::CpuWorker<N>::selfTest()
         return (N == 8) && verify(Algorithm::GHOSTRIDER_RTM, test_output_gr);
     }
 #   endif
+
+    if (m_algorithm.family() == Algorithm::CIVICLIGHT_FAMILY) {
+        if (N != 1) {
+            return false;
+        }
+
+        uint8_t header[80] = {};
+        civiclight::hash(header, sizeof(header), m_hash);
+        if (memcmp(m_hash, civiclight_test_out_v1, sizeof(civiclight_test_out_v1)) != 0) {
+            return false;
+        }
+
+        constexpr uint32_t activation = 1784797200U;
+        header[68] = static_cast<uint8_t>(activation);
+        header[69] = static_cast<uint8_t>(activation >> 8);
+        header[70] = static_cast<uint8_t>(activation >> 16);
+        header[71] = static_cast<uint8_t>(activation >> 24);
+
+        civiclight::hash(header, sizeof(header), m_hash);
+        return memcmp(m_hash, civiclight_test_out_v2, sizeof(civiclight_test_out_v2)) == 0;
+    }
+
+#ifdef XMRIG_ALGO_VERUSHASH
+    if (m_algorithm.family() == Algorithm::VERUSHASH_FAMILY) {
+        return N == 1 && verus_hash_supported();
+    }
+#endif
+
+#ifdef XMRIG_ALGO_XELISHASH
+    if (m_algorithm.family() == Algorithm::XELISHASH_FAMILY) {
+        return N == 1;
+    }
+#endif
 
     if (m_algorithm.family() == Algorithm::CN) {
         const bool rc = verify(Algorithm::CN_0,      test_output_v0)   &&
@@ -341,6 +396,40 @@ void xmrig::CpuWorker<N>::start()
                     break;
 #               endif
 
+                case Algorithm::CIVICLIGHT_FAMILY:
+                    if (N == 1) {
+                        civiclight::hash(m_job.blob(), job.size(), m_hash);
+                    }
+                    else {
+                        valid = false;
+                    }
+                    break;
+
+#ifdef XMRIG_ALGO_VERUSHASH
+                case Algorithm::VERUSHASH_FAMILY:
+                    if (N == 1) {
+                        verus_hash_v2_2(m_hash, m_job.blob(), job.size());
+                    }
+                    else {
+                        valid = false;
+                    }
+                    break;
+#endif
+
+#ifdef XMRIG_ALGO_XELISHASH
+                case Algorithm::XELISHASH_FAMILY:
+                    if (N == 1) {
+                        uint8_t input[LIQUIDMINER_XELIS_INPUT_SIZE]{};
+                        const size_t copy = std::min(job.size(), sizeof(input));
+                        memcpy(input, m_job.blob(), copy);
+                        xelis_hash_v3(input, m_hash, m_xelisScratch);
+                    }
+                    else {
+                        valid = false;
+                    }
+                    break;
+#endif
+
                 default:
                     fn(job.algorithm())(m_job.blob(), job.size(), m_hash, m_ctx, job.height());
                     break;
@@ -353,8 +442,7 @@ void xmrig::CpuWorker<N>::start()
 
             if (valid) {
                 for (size_t i = 0; i < N; ++i) {
-                    const uint64_t value = *reinterpret_cast<uint64_t*>(m_hash + (i * 32) + 24);
-
+                    const uint64_t value = *reinterpret_cast<uint64_t *>(m_hash + (i * 32) + 24);
 #                   ifdef XMRIG_FEATURE_BENCHMARK
                     if (m_benchSize) {
                         if (current_job_nonces[i] < m_benchSize) {
@@ -364,9 +452,10 @@ void xmrig::CpuWorker<N>::start()
                     else
 #                   endif
 
-                    if (value < job.target()) {
+                    if (job.checkHash(m_hash + (i * 32))) {
                         uint8_t* extra_data = nullptr;
 
+ #                      ifdef XMRIG_ALGO_RANDOMX
                         if (job.algorithm().family() == Algorithm::RANDOM_X) {
                             if (RandomX_CurrentConfig.Tweak_V2_COMMITMENT) {
                                 extra_data = m_commitment;
@@ -375,6 +464,7 @@ void xmrig::CpuWorker<N>::start()
                                 extra_data = miner_signature_saved;
                             }
                         }
+#                       endif
 
                         JobResults::submit(job, current_job_nonces[i], m_hash + (i * 32), extra_data);
                     }
@@ -533,7 +623,7 @@ void xmrig::CpuWorker<N>::consumeJob()
         return;
     }
 
-    auto job = m_miner->job();
+    auto job = m_miner->job(id(), affinity(), m_poolId);
 
 #   ifdef XMRIG_FEATURE_BENCHMARK
     m_benchSize          = job.benchSize();

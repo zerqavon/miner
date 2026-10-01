@@ -41,7 +41,7 @@ static inline const std::string &usage()
 
     u += "Usage: " APP_ID " [OPTIONS]\n\nNetwork:\n";
     u += "  -o, --url=URL                 URL of mining server\n";
-    u += "  -a, --algo=ALGO               mining algorithm https://xmrig.com/docs/algorithms\n";
+    u += "  -a, --algo=ALGO               mining algorithm, example civiclight or rx/0\n";
     u += "      --coin=COIN               specify coin instead of algorithm\n";
     u += "  -u, --user=USERNAME           username for mining server\n";
     u += "  -p, --pass=PASSWORD           password for mining server\n";
@@ -73,7 +73,9 @@ static inline const std::string &usage()
     u += "  -R, --retry-pause=N           time to pause between retries (default: 5)\n";
     u += "      --user-agent              set custom user-agent string for pool\n";
     u += "      --donate-level=N          donate level, default 1%% (1 minute in 100 minutes)\n";
-    u += "      --donate-over-proxy=N     control donate over xmrig-proxy feature\n";
+    u += "      --donate-over-proxy=N     control donate over proxy mining feature\n";
+    u += "      --split-pool0=N           fixed dual CPU split percentage for pool #1, example 80\n";
+    u += "      --split-pool1=N           fixed dual CPU split percentage for pool #2, example 20\n";
 
     u += "\nCPU backend:\n";
 
@@ -121,7 +123,7 @@ static inline const std::string &usage()
 #   ifdef XMRIG_FEATURE_CUDA
     u += "\nCUDA backend:\n";
     u += "      --cuda                    enable CUDA mining backend\n";
-    u += "      --cuda-loader=PATH        path to CUDA plugin (xmrig-cuda.dll or libxmrig-cuda.so)\n";
+    u += "      --cuda-loader=PATH        path to CUDA plugin (liquidminer-cuda.dll or libliquidminer-cuda.so)\n";
     u += "      --cuda-devices=N          comma separated list of CUDA devices to use\n";
     u += "      --cuda-bfactor-hint=N     bfactor hint for autoconfig (0-12)\n";
     u += "      --cuda-bsleep-hint=N      bsleep hint for autoconfig\n";

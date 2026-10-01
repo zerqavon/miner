@@ -45,66 +45,6 @@ template<Algorithm::Family FAMILY>
 static inline size_t generate(Threads<CudaThreads> &, const std::vector<CudaDevice> &) { return 0; }
 
 
-template<>
-size_t inline generate<Algorithm::CN>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
-{
-    size_t count = 0;
-
-    count += generate(Algorithm::kCN, threads, Algorithm::CN_1, devices);
-    count += generate(Algorithm::kCN_2, threads, Algorithm::CN_2, devices);
-
-    if (!threads.isExist(Algorithm::CN_0)) {
-        threads.disable(Algorithm::CN_0);
-        count++;
-    }
-
-    return count;
-}
-
-
-#ifdef XMRIG_ALGO_CN_LITE
-template<>
-size_t inline generate<Algorithm::CN_LITE>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
-{
-    size_t count = generate(Algorithm::kCN_LITE, threads, Algorithm::CN_LITE_1, devices);
-
-    if (!threads.isExist(Algorithm::CN_LITE_0)) {
-        threads.disable(Algorithm::CN_LITE_0);
-        ++count;
-    }
-
-    return count;
-}
-#endif
-
-
-#ifdef XMRIG_ALGO_CN_HEAVY
-template<>
-size_t inline generate<Algorithm::CN_HEAVY>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
-{
-    return generate(Algorithm::kCN_HEAVY, threads, Algorithm::CN_HEAVY_0, devices);
-}
-#endif
-
-
-#ifdef XMRIG_ALGO_CN_PICO
-template<>
-size_t inline generate<Algorithm::CN_PICO>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
-{
-    return generate(Algorithm::kCN_PICO, threads, Algorithm::CN_PICO_0, devices);
-}
-#endif
-
-
-#ifdef XMRIG_ALGO_CN_FEMTO
-template<>
-size_t inline generate<Algorithm::CN_FEMTO>(Threads<CudaThreads>& threads, const std::vector<CudaDevice>& devices)
-{
-    return generate(Algorithm::kCN_UPX2, threads, Algorithm::CN_UPX2, devices);
-}
-#endif
-
-
 #ifdef XMRIG_ALGO_RANDOMX
 template<>
 size_t inline generate<Algorithm::RANDOM_X>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
@@ -137,6 +77,27 @@ size_t inline generate<Algorithm::KAWPOW>(Threads<CudaThreads> &threads, const s
     return generate(Algorithm::kKAWPOW, threads, Algorithm::KAWPOW_RVN, devices);
 }
 #endif
+
+
+template<>
+size_t inline generate<Algorithm::XELISHASH_FAMILY>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
+{
+    return generate(Algorithm::kXELISHASH_V3, threads, Algorithm::XELISHASH_V3, devices);
+}
+
+
+template<>
+size_t inline generate<Algorithm::NEXAPOW_FAMILY>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
+{
+    return generate(Algorithm::kNEXAPOW, threads, Algorithm::NEXAPOW, devices);
+}
+
+
+template<>
+size_t inline generate<Algorithm::OGGPOW_FAMILY>(Threads<CudaThreads> &threads, const std::vector<CudaDevice> &devices)
+{
+    return generate(Algorithm::kOGGPOW, threads, Algorithm::OGGPOW, devices);
+}
 
 
 } /* namespace xmrig */

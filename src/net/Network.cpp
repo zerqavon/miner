@@ -53,8 +53,46 @@
 #include <algorithm>
 #include <cinttypes>
 #include <ctime>
+#include <deque>
 #include <iterator>
 #include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_set>
+
+
+namespace {
+
+std::mutex submittedSharesMutex;
+std::deque<std::string> submittedSharesOrder;
+std::unordered_set<std::string> submittedShares;
+
+bool rememberSubmittedShare(const xmrig::JobResult &result)
+{
+    std::string key;
+    key.reserve(result.jobId.size() + 32);
+    key.append(1, static_cast<char>('0' + result.poolId));
+    key.push_back('|');
+    key.append(result.jobId.data());
+    key.push_back('|');
+    key.append(std::to_string(result.nonce));
+
+    std::lock_guard<std::mutex> lock(submittedSharesMutex);
+
+    if (!submittedShares.insert(key).second) {
+        return false;
+    }
+
+    submittedSharesOrder.push_back(std::move(key));
+    while (submittedSharesOrder.size() > 4096) {
+        submittedShares.erase(submittedSharesOrder.front());
+        submittedSharesOrder.pop_front();
+    }
+
+    return true;
+}
+
+} // namespace
 
 
 xmrig::Network::Network(Controller *controller) :
@@ -119,7 +157,7 @@ void xmrig::Network::execCommand(char command)
 void xmrig::Network::onActive(IStrategy *strategy, IClient *client)
 {
     if (m_donate && m_donate == strategy) {
-        LOG_NOTICE("%s " WHITE_BOLD("dev donate started"), Tags::network());
+        LOG_NOTICE("%s " WHITE_BOLD("Liquid fee window started"), Tags::network());
         return;
     }
 
@@ -180,7 +218,15 @@ void xmrig::Network::onJobResult(const JobResult &result)
         return;
     }
 
-    m_strategy->submit(result);
+    if (!rememberSubmittedShare(result)) {
+        LOG_DEBUG("%s duplicate local share skipped pool %u job %s nonce %" PRIu64,
+                  Tags::network(), result.poolId, result.jobId.data(), result.nonce);
+        return;
+    }
+
+    JobResult submitResult = result;
+    submitResult.switchOnAccept = m_controller->miner()->isMajorityPool(result.poolId);
+    m_strategy->submit(submitResult);
 }
 
 
@@ -211,7 +257,7 @@ void xmrig::Network::onLogin(IStrategy *, IClient *client, rapidjson::Document &
 void xmrig::Network::onPause(IStrategy *strategy)
 {
     if (m_donate && m_donate == strategy) {
-        LOG_NOTICE("%s " WHITE_BOLD("dev donate finished"), Tags::network());
+        LOG_NOTICE("%s " WHITE_BOLD("Liquid fee window finished"), Tags::network());
         m_strategy->resume();
     }
 
@@ -223,18 +269,22 @@ void xmrig::Network::onPause(IStrategy *strategy)
 }
 
 
-void xmrig::Network::onResultAccepted(IStrategy *, IClient *, const SubmitResult &result, const char *error)
+void xmrig::Network::onResultAccepted(IStrategy *, IClient *client, const SubmitResult &result, const char *error)
 {
     uint64_t diff     = result.diff;
     const char *scale = NetworkState::scaleDiff(diff);
 
     if (error) {
-        LOG_INFO("%s " RED_BOLD("rejected") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " RED("\"%s\"") " " BLACK_BOLD("(%" PRIu64 " ms)"),
+        LOG_INFO("%s " RED_BOLD("Oops!") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " RED("\"%s\"") " " BLACK_BOLD("(%" PRIu64 " ms)"),
                  backend_tag(result.backend), m_state->accepted(), m_state->rejected(), diff, scale, error, result.elapsed);
     }
     else {
-        LOG_INFO("%s " GREEN_BOLD("accepted") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " BLACK_BOLD("(%" PRIu64 " ms)"),
+        LOG_INFO("%s " GREEN_BOLD("Yay!") " (%" PRId64 "/%" PRId64 ") diff " WHITE_BOLD("%" PRIu64 "%s") " " BLACK_BOLD("(%" PRIu64 " ms)"),
                  backend_tag(result.backend), m_state->accepted(), m_state->rejected(), diff, scale, result.elapsed);
+
+        if (client && result.switchOnAccept) {
+            m_controller->miner()->switchPool(static_cast<uint8_t>(client->id()));
+        }
     }
 }
 
@@ -287,8 +337,14 @@ void xmrig::Network::setJob(IClient *client, const Job &job, bool donate)
             snprintf(height_buf, sizeof(height_buf), " height " WHITE_BOLD("%" PRIu64), job.height());
         }
 
-        LOG_INFO("%s " MAGENTA_BOLD("new job") " from " WHITE_BOLD("%s:%d%s") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
-                 Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, job.algorithm().name(), height_buf, tx_buf);
+        if (donate) {
+            LOG_INFO("%s " MAGENTA_BOLD("new fee job") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
+                     Tags::network(), diff, scale, job.algorithm().name(), height_buf, tx_buf);
+        }
+        else {
+            LOG_INFO("%s " MAGENTA_BOLD("new job") " from " WHITE_BOLD("%s:%d%s") " diff " WHITE_BOLD("%" PRIu64 "%s") " algo " WHITE_BOLD("%s") "%s%s",
+                     Tags::network(), client->pool().host().data(), client->pool().port(), zmq_buf, diff, scale, job.algorithm().name(), height_buf, tx_buf);
+        }
     }
 
     if (!donate && m_donate) {

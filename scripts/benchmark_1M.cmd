@@ -1,4 +1,4 @@
 @echo off
 cd /d "%~dp0"
-xmrig.exe --bench=1M --submit
+liquidminer.exe --bench=1M
 pause

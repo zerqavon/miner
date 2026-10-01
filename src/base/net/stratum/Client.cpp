@@ -187,6 +187,44 @@ int64_t xmrig::Client::send(const rapidjson::Value &obj)
 
 int64_t xmrig::Client::submit(const JobResult &result)
 {
+    if (isXelisStratum()) {
+        using namespace rapidjson;
+
+        Document doc(kObjectType);
+        auto &allocator = doc.GetAllocator();
+        Value params(kArrayType);
+        params.PushBack(m_user.toJSON(), allocator);
+        params.PushBack(result.jobId.toJSON(), allocator);
+
+        char nonce[32] = {};
+        snprintf(nonce, sizeof(nonce), "%016" PRIx64, result.nonce);
+        params.PushBack(Value(nonce, allocator), allocator);
+
+        JsonRequest::create(doc, m_sequence, "mining.submit", params);
+        m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), 0, result.backend, result.switchOnAccept);
+        return send(doc);
+    }
+
+    if (isNexaStratum()) {
+        using namespace rapidjson;
+
+        Document doc(kObjectType);
+        auto &allocator = doc.GetAllocator();
+        Value params(kArrayType);
+        params.PushBack(m_user.toJSON(), allocator);
+        params.PushBack(result.jobId.toJSON(), allocator);
+
+        char nonce[17] = {};
+        char prefix[9] = {};
+        Cvt::toHex(prefix, sizeof(prefix), result.nexaNoncePrefix(), 4);
+        snprintf(nonce, sizeof(nonce), "%s%08" PRIx32, prefix, static_cast<uint32_t>(result.nonce));
+        params.PushBack(Value(nonce, allocator), allocator);
+
+        JsonRequest::create(doc, m_sequence, "mining.submit", params);
+        m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), 0, result.backend, result.switchOnAccept);
+        return send(doc);
+    }
+
 #   ifndef XMRIG_PROXY_PROJECT
     if (result.clientId != m_rpcId || m_rpcId.isNull() || m_state != ConnectedState) {
         return -1;
@@ -258,9 +296,9 @@ int64_t xmrig::Client::submit(const JobResult &result)
     JsonRequest::create(doc, m_sequence, "submit", params);
 
 #   ifdef XMRIG_PROXY_PROJECT
-    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), result.id, 0);
+    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), result.id, 0, result.switchOnAccept);
 #   else
-    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), 0, result.backend);
+    m_results[m_sequence] = SubmitResult(m_sequence, result.diff, result.actualDiff(), 0, result.backend, result.switchOnAccept);
 #   endif
 
     return send(doc);
@@ -655,6 +693,21 @@ void xmrig::Client::login()
     using namespace rapidjson;
     m_results.clear();
 
+    if (isXelisStratum() || isNexaStratum()) {
+        Document doc(kObjectType);
+        auto &allocator = doc.GetAllocator();
+        Value params(kArrayType);
+        params.PushBack(StringRef(m_agent), allocator);
+        if (isXelisStratum()) {
+        Value algorithms(kArrayType);
+        algorithms.PushBack(StringRef("xel/v3"), allocator);
+        params.PushBack(algorithms, allocator);
+        }
+        JsonRequest::create(doc, 1, "mining.subscribe", params);
+        send(doc);
+        return;
+    }
+
     Document doc(kObjectType);
     auto &allocator = doc.GetAllocator();
 
@@ -823,6 +876,30 @@ void xmrig::Client::parseExtensions(const rapidjson::Value &result)
 
 void xmrig::Client::parseNotification(const char *method, const rapidjson::Value &params, const rapidjson::Value &)
 {
+    if (isXelisStratum() || isNexaStratum()) {
+        if (strcmp(method, "mining.notify") == 0) {
+            if (isNexaStratum()) {
+                if (!parseNexaNotify(params)) {
+                    close();
+                }
+                return;
+            }
+            if (!parseXelisNotify(params)) {
+                close();
+            }
+            return;
+        }
+
+        if (strcmp(method, "mining.set_difficulty") == 0 && params.IsArray() && !params.Empty()) {
+            const uint64_t diff = params[0].IsUint64() ? params[0].GetUint64() : static_cast<uint64_t>(params[0].GetDouble());
+            if (isNexaStratum()) m_nexaDiff = diff;
+            else m_xelisDiff = diff;
+            return;
+        }
+
+        return;
+    }
+
     if (strcmp(method, "job") == 0) {
         int code = -1;
         if (parseJob(params, &code)) {
@@ -839,6 +916,8 @@ void xmrig::Client::parseNotification(const char *method, const rapidjson::Value
 
 void xmrig::Client::parseResponse(int64_t id, const rapidjson::Value &result, const rapidjson::Value &error)
 {
+    if (isXelisStratum() || isNexaStratum()) {
+    }
     if (handleResponse(id, result, error)) {
         return;
     }
@@ -855,6 +934,69 @@ void xmrig::Client::parseResponse(int64_t id, const rapidjson::Value &result, co
         }
 
         return;
+    }
+
+    if (isXelisStratum() || isNexaStratum()) {
+        using namespace rapidjson;
+        if (id == 1 && result.IsArray() && (isNexaStratum() ? result.Size() >= 3 : result.Size() >= 4)) {
+            if (!result[1].IsString()) {
+                close();
+                return;
+            }
+
+            if (isNexaStratum()) {
+    m_nexaExtraNonce = result[1].GetString();
+                m_nexaTime = "";
+                m_nexaDiff = 1;
+                if (result[2].IsUint()) {
+                    m_nexaLegacy = result[2].GetUint() == 4;
+                    if ((!m_nexaLegacy && result[2].GetUint() != 8) ||
+                        m_nexaExtraNonce.size() != result[2].GetUint() * 2) {
+                        close();
+                        return;
+                    }
+                }
+                Document doc(kObjectType);
+                auto &allocator = doc.GetAllocator();
+                Value params(kArrayType);
+                params.PushBack(m_user.toJSON(), allocator);
+                params.PushBack(m_password.toJSON(), allocator);
+                JsonRequest::create(doc, 2, "mining.authorize", params);
+                send(doc);
+                return;
+            }
+
+            if (!result[3].IsString()) {
+                close();
+                return;
+            }
+
+            m_xelisExtraNonce = result[1].GetString();
+            m_xelisPublicKey = result[3].GetString();
+
+            Document doc(kObjectType);
+            auto &allocator = doc.GetAllocator();
+            Value params(kArrayType);
+            params.PushBack(m_user.toJSON(), allocator);
+            params.PushBack(m_password.toJSON(), allocator);
+            JsonRequest::create(doc, 2, "mining.authorize", params);
+            send(doc);
+            return;
+        }
+
+        if (id == 2 && result.IsBool()) {
+            if (!result.GetBool()) {
+                close();
+                return;
+            }
+
+            if (isNexaStratum()) m_nexaAuthorized = true;
+            else m_xelisAuthorized = true;
+                m_failures = 0;
+                m_listener->onLoginSuccess(this);
+
+                return;
+        }
     }
 
     if (!result.IsObject()) {
@@ -883,6 +1025,102 @@ void xmrig::Client::parseResponse(int64_t id, const rapidjson::Value &result, co
     }
 
     handleSubmitResponse(id);
+}
+
+
+bool xmrig::Client::isXelisStratum() const
+{
+    return m_pool.algorithm().family() == Algorithm::XELISHASH_FAMILY;
+}
+
+
+bool xmrig::Client::isNexaStratum() const
+{
+    return m_pool.algorithm().family() == Algorithm::NEXAPOW_FAMILY;
+}
+
+
+bool xmrig::Client::parseNexaNotify(const rapidjson::Value &params)
+{
+    if (!params.IsArray() || params.Size() < 4 || !params[0].IsString() ||
+        !params[1].IsString() || m_nexaExtraNonce.size() != (m_nexaLegacy ? 8 : 16)) {
+        return false;
+    }
+
+    const char *commitment = params[1].GetString();
+    if (strlen(commitment) != 64) {
+        return false;
+    }
+
+    // 2Miners uses the legacy 4-byte extranonce/4-byte nonce form.
+    std::string blob = commitment;
+    blob += m_nexaExtraNonce.data();
+    blob.append(m_nexaLegacy ? 8 : 16, '0');
+
+    Job job(false, Algorithm::NEXAPOW, m_rpcId);
+    if (!job.setId(params[0].GetString()) || !job.setBlob(blob.c_str())) {
+        return false;
+    }
+    // Nexa's legacy stratum expresses vardiff in Nexa units. 2Miners sends
+    // difficulty 1, which corresponds to roughly 2^32 regular share
+    // difficulty (WildRig reports it as about 4.30G). Treating it as a
+    // regular difficulty of 1 would make practically every hash a submit.
+    const uint64_t nexaShareDiff = std::max<uint64_t>(1, m_nexaDiff) << 32;
+    job.setDiff(nexaShareDiff);
+    job.setHeight(0);
+
+    if (m_job != job) {
+        m_jobs++;
+        m_job = std::move(job);
+        m_listener->onJobReceived(this, m_job, params);
+    }
+    return true;
+}
+
+
+bool xmrig::Client::parseXelisNotify(const rapidjson::Value &params)
+{
+    if (!params.IsArray() || params.Size() < 5 || !params[0].IsString() || !params[1].IsString() ||
+        !params[2].IsString() || !params[3].IsString() || m_xelisExtraNonce.isNull() || m_xelisPublicKey.isNull()) {
+        return false;
+    }
+
+    const char *algorithm = params[3].GetString();
+    if (strcmp(algorithm, "xel/v3") != 0 && strcmp(algorithm, "xel/2") != 0) {
+        return false;
+    }
+
+    // Xelis MinerWork: header work hash (32), timestamp (8), nonce (8),
+    // extranonce (32), public key (32). The nonce starts at byte 40.
+    std::string blob;
+    blob.reserve(224);
+    blob += params[2].GetString();
+    const std::string timestamp = params[1].GetString();
+    if (timestamp.size() > 16) {
+        return false;
+    }
+    blob.append(16 - timestamp.size(), '0');
+    blob += timestamp;
+    blob.append(16, '0');
+    blob += m_xelisExtraNonce.data();
+    blob += m_xelisPublicKey.data();
+
+    Job job(false, Algorithm::XELISHASH_V3, m_rpcId);
+    if (!job.setId(params[0].GetString()) || !job.setBlob(blob.c_str())) {
+        return false;
+    }
+
+    job.setAlgorithm(Algorithm::XELISHASH_V3);
+    job.setExtraNonce(m_xelisExtraNonce);
+    job.setDiff(m_xelisDiff == 0 ? 1 : m_xelisDiff);
+
+    if (m_job != job) {
+        m_jobs++;
+        m_job = std::move(job);
+        m_listener->onJobReceived(this, m_job, params);
+    }
+
+    return true;
 }
 
 

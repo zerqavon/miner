@@ -46,6 +46,8 @@ public:
 
     static const char *kPauseOnBattery;
     static const char *kPauseOnActive;
+    static const char *kSplitPool0;
+    static const char *kSplitPool1;
 
 #   ifdef XMRIG_FEATURE_OPENCL
     static const char *kOcl;
@@ -71,6 +73,9 @@ public:
     bool isPauseOnBattery() const;
     const CpuConfig &cpu() const;
     uint32_t idleTime() const;
+    uint32_t splitPool0() const;
+    uint32_t splitPool1() const;
+    bool isFixedDualPoolSplit() const;
 
 #   ifdef XMRIG_FEATURE_OPENCL
     const OclConfig &cl() const;

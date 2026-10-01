@@ -202,7 +202,7 @@ void ethash_calculate_dag_item4_opt(
 		for (uint32_t j = 0; j < 4; ++j) {
 			const uint32_t parent_index = fast_mod(fnv_hash((node_index + j) ^ i, ret[j].words[i % NODE_WORDS]), light->num_parent_nodes, light->reciprocal, light->increment, light->shift);
 			parent[j] = &cache_nodes[parent_index];
-			kp_prefetch(parent[j]);
+                        kp_prefetch((const char *) parent[j]);
 		}
 
 		for (unsigned w = 0; w != NODE_WORDS; ++w) ret[0].words[w] = fnv_hash(ret[0].words[w], parent[0]->words[w]);

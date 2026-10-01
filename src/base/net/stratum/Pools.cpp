@@ -29,6 +29,7 @@
 #include "base/kernel/interfaces/IJsonReader.h"
 #include "base/net/stratum/strategies/FailoverStrategy.h"
 #include "base/net/stratum/strategies/SinglePoolStrategy.h"
+#include "base/net/stratum/strategies/RoundRobinStrategy.h"
 #include "donate.h"
 
 
@@ -88,6 +89,10 @@ xmrig::IStrategy *xmrig::Pools::createStrategy(IStrategyListener *listener) cons
                 return new SinglePoolStrategy(pool, retryPause(), retries(), listener);
             }
         }
+    }
+
+    if (active() == 2) {
+        return new RoundRobinStrategy(m_data, retryPause(), retries(), listener);
     }
 
     auto strategy = new FailoverStrategy(retryPause(), retries(), listener);
@@ -179,7 +184,7 @@ void xmrig::Pools::print() const
 {
     size_t i = 1;
     for (const Pool &pool : m_data) {
-        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("POOL #%-7zu") "%s", i, pool.printableName().c_str());
+        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("ROUTE #%-6zu") "%s", i, pool.printableName().c_str());
 
         i++;
     }

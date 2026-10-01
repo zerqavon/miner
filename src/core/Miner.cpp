@@ -17,6 +17,7 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <mutex>
 #include <thread>
 
@@ -39,6 +40,10 @@
 #include "version.h"
 
 
+#ifdef XMRIG_FEATURE_HWLOC
+#   include <hwloc.h>
+#endif
+
 #ifdef XMRIG_FEATURE_API
 #   include "base/api/Api.h"
 #   include "base/api/interfaces/IApiRequest.h"
@@ -47,11 +52,13 @@
 
 #ifdef XMRIG_FEATURE_OPENCL
 #   include "backend/opencl/OclBackend.h"
+#   include "backend/opencl/OclConfig.h"
 #endif
 
 
 #ifdef XMRIG_FEATURE_CUDA
 #   include "backend/cuda/CudaBackend.h"
+#   include "backend/cuda/CudaConfig.h"
 #endif
 
 
@@ -115,6 +122,61 @@ public:
     }
 
 
+    inline bool isDualPool() const
+    {
+        return controller->config()->pools().active() == 2;
+    }
+
+
+    inline bool isGpuEnabled() const
+    {
+#       ifdef XMRIG_FEATURE_OPENCL
+        if (controller->config()->cl().isEnabled()) {
+            return true;
+        }
+#       endif
+
+#       ifdef XMRIG_FEATURE_CUDA
+        if (controller->config()->cuda().isEnabled()) {
+            return true;
+        }
+#       endif
+
+        return false;
+    }
+
+
+    inline bool isDualGpuSplit() const
+    {
+        return isDualPool() && isGpuEnabled();
+    }
+
+
+    inline bool isDualCpuSplit() const
+    {
+        return isDualPool()
+               && !isDualGpuSplit()
+               && poolJobs[0].isValid()
+               && poolJobs[1].isValid()
+               && !isDualAlgorithmCompatible(poolJobs[0].algorithm(), poolJobs[1].algorithm());
+    }
+
+
+    inline Job jobForBackend(size_t backendIndex)
+    {
+        if (job.index() == 1 || !isDualGpuSplit()) {
+            return job;
+        }
+
+        const size_t poolId = backendIndex == 0 ? 0 : 1;
+        if (poolJobs[poolId].isValid()) {
+            return poolJobs[poolId];
+        }
+
+        return job;
+    }
+
+
     inline void handleJobChange()
     {
         if (!enabled) {
@@ -125,8 +187,8 @@ public:
             Nonce::reset(job.index());
         }
 
-        for (IBackend *backend : backends) {
-            backend->setJob(job);
+        for (size_t i = 0; i < backends.size(); ++i) {
+            backends[i]->setJob(jobForBackend(i));
         }
 
         Nonce::touch();
@@ -139,6 +201,91 @@ public:
             ticks++;
             timer->start(500, 500);
         }
+    }
+
+
+    inline bool isSamePhysicalCore(int64_t a, int64_t b) const
+    {
+        if (a < 0 || b < 0) {
+            return false;
+        }
+
+#       ifdef XMRIG_FEATURE_HWLOC
+        const auto topology = Cpu::info()->topology();
+        const auto coreForPu = [topology](int64_t affinity) -> hwloc_obj_t {
+            auto obj = hwloc_get_pu_obj_by_os_index(topology, static_cast<unsigned>(affinity));
+            while (obj && obj->type != HWLOC_OBJ_CORE) {
+                obj = obj->parent;
+            }
+
+            return obj;
+        };
+
+        const auto coreA = coreForPu(a);
+        const auto coreB = coreForPu(b);
+
+        return coreA && coreA == coreB;
+#       else
+        return a == b;
+#       endif
+    }
+
+
+    inline bool isMinorityWorker(size_t workerId, int64_t affinity)
+    {
+        if (workerId == 0 && affinity >= 0) {
+            minorityCoreAffinity = affinity;
+        }
+
+        if (minorityCoreAffinity >= 0) {
+            return isSamePhysicalCore(affinity, minorityCoreAffinity);
+        }
+
+        const size_t cores = Cpu::info()->cores();
+        const size_t logical = Cpu::info()->threads();
+        const size_t threadsPerCore = cores > 0 ? std::max<size_t>(logical / cores, 1) : 1;
+
+        return workerId < threadsPerCore;
+    }
+
+
+    inline Job jobForWorker(size_t workerId, int64_t affinity)
+    {
+        if (isDualGpuSplit() && poolJobs[0].isValid()) {
+            return poolJobs[0];
+        }
+
+        if (isDualCpuSplit()) {
+            return job;
+        }
+
+        if (!isDualPool() || activePool < 0 || !poolJobs[0].isValid() || !poolJobs[1].isValid()) {
+            return job;
+        }
+
+        const uint8_t poolId = isMinorityWorker(workerId, affinity) ? static_cast<uint8_t>(1 - activePool) : static_cast<uint8_t>(activePool);
+
+        return poolJobs[poolId];
+    }
+
+
+    inline Job jobForWorker(size_t workerId, int64_t affinity, int8_t poolId)
+    {
+        if (poolId >= 0 && isDualCpuSplit() && static_cast<size_t>(poolId) < poolJobs.size() && poolJobs[static_cast<size_t>(poolId)].isValid()) {
+            return poolJobs[static_cast<size_t>(poolId)];
+        }
+
+        return jobForWorker(workerId, affinity);
+    }
+
+
+    static inline bool isDualAlgorithmCompatible(const Algorithm &a, const Algorithm &b)
+    {
+#       ifdef XMRIG_ALGO_RANDOMX
+        return a.family() == Algorithm::RANDOM_X && b.family() == Algorithm::RANDOM_X && a.l3() == b.l3() && RxAlgo::base(a) == RxAlgo::base(b);
+#       else
+        return a.id() == b.id() && a.l3() == b.l3();
+#       endif
     }
 
 
@@ -349,6 +496,40 @@ public:
                  avg_hashrate_buf
                  );
 
+        if (count > 1) {
+            for (auto backend : backends) {
+                const auto hashrate = backend->hashrate();
+                if (!hashrate) {
+                    continue;
+                }
+
+                char backend_num[16 * 3] = { 0 };
+                auto backend_short       = hashrate->calc(Hashrate::ShortInterval);
+                auto backend_medium      = hashrate->calc(Hashrate::MediumInterval);
+                auto backend_large       = hashrate->calc(Hashrate::LargeInterval);
+                double backend_scale     = 1.0;
+                const char *backend_unit = "H/s";
+
+                if ((backend_short.second >= 1e6) || (backend_medium.second >= 1e6) || (backend_large.second >= 1e6)) {
+                    backend_scale = 1e-6;
+
+                    backend_short.second  *= backend_scale;
+                    backend_medium.second *= backend_scale;
+                    backend_large.second  *= backend_scale;
+
+                    backend_unit = "MH/s";
+                }
+
+                LOG_INFO("%s " WHITE_BOLD("%s speed") " 10s/60s/15m " CYAN_BOLD("%s") CYAN(" %s %s ") CYAN_BOLD("%s"),
+                         Tags::miner(),
+                         backend->type().data(),
+                         Hashrate::format(backend_short,  backend_num,          16),
+                         Hashrate::format(backend_medium, backend_num + 16,     16),
+                         Hashrate::format(backend_large,  backend_num + 16 * 2, 16), backend_unit
+                         );
+            }
+        }
+
 #       ifdef XMRIG_FEATURE_BENCHMARK
         for (auto backend : backends) {
             backend->printBenchProgress();
@@ -375,8 +556,13 @@ public:
     bool enabled        = true;
     int32_t auto_pause = 0;
     bool reset          = true;
+    bool backendSplitLogged = false;
     Controller *controller;
     Job job;
+    std::array<Job, 2> poolJobs;
+    int activePool      = -1;
+    int64_t minorityCoreAffinity = -1;
+    bool poolSwitched   = false;
     mutable std::map<Algorithm::Id, double> maxHashrate;
     std::vector<IBackend *> backends;
     String userJobId;
@@ -469,6 +655,70 @@ xmrig::Job xmrig::Miner::job() const
 }
 
 
+bool xmrig::Miner::isMajorityPool(uint8_t poolId) const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (d_ptr->controller->config()->isFixedDualPoolSplit()) {
+        return false;
+    }
+
+    return !d_ptr->isDualGpuSplit() && d_ptr->isDualPool() && d_ptr->activePool >= 0 && poolId == static_cast<uint8_t>(d_ptr->activePool);
+}
+
+
+bool xmrig::Miner::isDualCpuSplit() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return d_ptr->isDualCpuSplit();
+}
+
+
+int xmrig::Miner::activePool() const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return d_ptr->activePool;
+}
+
+
+xmrig::Job xmrig::Miner::job(bool gpu) const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return d_ptr->jobForBackend(gpu ? 1 : 0);
+}
+
+
+xmrig::Job xmrig::Miner::job(size_t workerId, int64_t affinity) const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return d_ptr->jobForWorker(workerId, affinity);
+}
+
+
+xmrig::Job xmrig::Miner::job(size_t workerId, int64_t affinity, int8_t poolId) const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    return d_ptr->jobForWorker(workerId, affinity, poolId);
+}
+
+
+xmrig::Job xmrig::Miner::poolJob(uint8_t poolId) const
+{
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (poolId < d_ptr->poolJobs.size() && d_ptr->poolJobs[poolId].isValid()) {
+        return d_ptr->poolJobs[poolId];
+    }
+
+    return d_ptr->job;
+}
+
+
 void xmrig::Miner::execCommand(char command)
 {
     switch (command) {
@@ -552,46 +802,99 @@ void xmrig::Miner::setEnabled(bool enabled)
 
 void xmrig::Miner::setJob(const Job &job, bool donate)
 {
-    for (IBackend *backend : d_ptr->backends) {
-        backend->prepare(job);
+    Job nextJob = job;
+    bool dualPoolJob = !donate && d_ptr->isDualPool() && nextJob.poolId() < d_ptr->poolJobs.size();
+    const uint8_t index = donate ? 1 : (dualPoolJob && nextJob.poolId() == 1 ? 2 : 0);
+    bool dualCpuSplitJob = false;
+    nextJob.setIndex(index);
+
+    if (dualPoolJob) {
+        std::lock_guard<std::mutex> lock(mutex);
+        const uint8_t otherPoolId = static_cast<uint8_t>(1 - nextJob.poolId());
+        if (!d_ptr->isDualGpuSplit() && d_ptr->poolJobs[otherPoolId].isValid() && !MinerPrivate::isDualAlgorithmCompatible(nextJob.algorithm(), d_ptr->poolJobs[otherPoolId].algorithm())) {
+            dualCpuSplitJob = true;
+
+            if (!d_ptr->backendSplitLogged) {
+                d_ptr->backendSplitLogged = true;
+                if (d_ptr->controller->config()->isFixedDualPoolSplit()) {
+                    LOG_INFO("%s dual-pool CPU fixed split enabled: pool 0 %u%% -> %s, pool 1 %u%% -> %s",
+                             Tags::miner(),
+                             d_ptr->controller->config()->splitPool0(),
+                             d_ptr->poolJobs[0].isValid() ? d_ptr->poolJobs[0].algorithm().name() : nextJob.algorithm().name(),
+                             d_ptr->controller->config()->splitPool1(),
+                             d_ptr->poolJobs[1].isValid() ? d_ptr->poolJobs[1].algorithm().name() : nextJob.algorithm().name());
+                }
+                else {
+                    LOG_INFO("%s dual-pool CPU split enabled: pool 0 -> %s, pool 1 -> %s",
+                             Tags::miner(), d_ptr->poolJobs[0].isValid() ? d_ptr->poolJobs[0].algorithm().name() : nextJob.algorithm().name(), d_ptr->poolJobs[1].isValid() ? d_ptr->poolJobs[1].algorithm().name() : nextJob.algorithm().name());
+                }
+            }
+        }
     }
 
 #   ifdef XMRIG_ALGO_RANDOMX
-    if (job.algorithm().family() == Algorithm::RANDOM_X) {
-        if (d_ptr->algorithm != job.algorithm()) {
-            stop();
-            RxAlgo::apply(job.algorithm());
+    if (nextJob.algorithm().family() == Algorithm::RANDOM_X) {
+        if (d_ptr->algorithm != nextJob.algorithm()) {
+            const bool sameConfig = d_ptr->algorithm.family() == Algorithm::RANDOM_X && RxAlgo::base(d_ptr->algorithm) == RxAlgo::base(nextJob.algorithm());
+            if (!sameConfig && !dualCpuSplitJob) {
+                stop();
+            }
+
+            RxAlgo::apply(nextJob.algorithm());
         }
-        else if (!Rx::isReady(job)) {
+        else if (!Rx::isReady(nextJob)) {
             Nonce::pause(true);
             Nonce::touch();
         }
     }
 #   endif
 
-    d_ptr->algorithm = job.algorithm();
-
     mutex.lock();
 
-    const uint8_t index = donate ? 1 : 0;
     const bool same_job_index = d_ptr->job.index() == index;
+    bool resetUpdatedPoolJob = false;
 
-    d_ptr->reset = !(d_ptr->job.index() == 1 && index == 0 && d_ptr->userJobId == job.id());
+    if (dualPoolJob) {
+        const Job previousPoolJob = d_ptr->poolJobs[nextJob.poolId()];
+        resetUpdatedPoolJob = previousPoolJob.isValid() && !previousPoolJob.isEqualBlob(nextJob);
+        d_ptr->poolJobs[nextJob.poolId()] = nextJob;
+
+        if (d_ptr->poolJobs[0].isValid()) {
+            if (!d_ptr->poolSwitched || d_ptr->activePool < 0 || !d_ptr->poolJobs[static_cast<size_t>(d_ptr->activePool)].isValid()) {
+                d_ptr->activePool = 0;
+            }
+        }
+        else if (d_ptr->activePool < 0) {
+            d_ptr->activePool = nextJob.poolId();
+        }
+
+        if (d_ptr->isDualGpuSplit() && d_ptr->poolJobs[0].isValid() && d_ptr->poolJobs[1].isValid() && !d_ptr->backendSplitLogged) {
+            d_ptr->backendSplitLogged = true;
+            LOG_INFO("%s dual-pool backend split enabled: CPU -> pool 0, GPU -> pool 1", Tags::miner());
+        }
+    }
+
+    const Job previousJob = d_ptr->job;
+    const Job selectedJob = dualPoolJob ? d_ptr->poolJobs[static_cast<size_t>(d_ptr->activePool)] : nextJob;
+
+    d_ptr->reset = !(previousJob.index() == 1 && index == 0 && d_ptr->userJobId == selectedJob.id());
 
     // Don't reset nonce if pool sends the same hashing blob again, but with different difficulty (for example)
-    if (d_ptr->job.isEqualBlob(job)) {
+    if (previousJob.isEqualBlob(selectedJob)) {
         d_ptr->reset = false;
     }
 
-    d_ptr->job   = job;
-    d_ptr->job.setIndex(index);
+    d_ptr->job = selectedJob;
+    d_ptr->algorithm = selectedJob.algorithm();
 
-    if (index == 0) {
-        d_ptr->userJobId = job.id();
+    if (!donate) {
+        d_ptr->userJobId = selectedJob.id();
     }
 
 #   ifdef XMRIG_ALGO_RANDOMX
-    const bool ready = d_ptr->initRX();
+    const bool nextReady = nextJob.algorithm().family() == Algorithm::RANDOM_X ? Rx::init(nextJob, d_ptr->controller->config()->rx(), d_ptr->controller->config()->cpu()) : true;
+    const bool selectedReady = selectedJob.algorithm().family() == Algorithm::RANDOM_X ? Rx::init(selectedJob, d_ptr->controller->config()->rx(), d_ptr->controller->config()->cpu()) : true;
+    const bool ready = selectedJob.isEqual(nextJob) ? nextReady : (nextReady && selectedReady);
 
     // Always reset nonce on RandomX dataset change
     // Except for switching to/from donation
@@ -610,6 +913,14 @@ void xmrig::Miner::setJob(const Job &job, bool donate)
 
     mutex.unlock();
 
+    if (resetUpdatedPoolJob) {
+        Nonce::reset(nextJob.index());
+    }
+
+    for (size_t i = 0; i < d_ptr->backends.size(); ++i) {
+        d_ptr->backends[i]->prepare(this->job(i != 0));
+    }
+
     d_ptr->active = true;
     d_ptr->m_taskbar.setActive(true);
 
@@ -625,6 +936,44 @@ void xmrig::Miner::stop()
 
     for (IBackend *backend : d_ptr->backends) {
         backend->stop();
+    }
+}
+
+
+void xmrig::Miner::switchPool(uint8_t acceptedPoolId)
+{
+    if (!d_ptr->isDualPool() || d_ptr->isDualGpuSplit() || d_ptr->controller->config()->isFixedDualPoolSplit()) {
+        return;
+    }
+
+    mutex.lock();
+
+    if (d_ptr->activePool < 0 || acceptedPoolId != static_cast<uint8_t>(d_ptr->activePool) || !d_ptr->poolJobs[0].isValid() || !d_ptr->poolJobs[1].isValid()) {
+        mutex.unlock();
+
+        return;
+    }
+
+    const int previousPool = d_ptr->activePool;
+    d_ptr->activePool = 1 - d_ptr->activePool;
+    d_ptr->poolSwitched = true;
+    const int nextPool = d_ptr->activePool;
+    const Job previousJob = d_ptr->job;
+    d_ptr->job = d_ptr->poolJobs[static_cast<size_t>(d_ptr->activePool)];
+    d_ptr->reset = !previousJob.isEqualBlob(d_ptr->job);
+
+#   ifdef XMRIG_ALGO_RANDOMX
+    const bool ready = Rx::init(d_ptr->job, d_ptr->controller->config()->rx(), d_ptr->controller->config()->cpu());
+#   else
+    constexpr const bool ready = true;
+#   endif
+
+    mutex.unlock();
+
+    LOG_INFO("%s dual-pool majority switched pool %d -> pool %d (one physical core is minority)", Tags::miner(), previousPool, nextPool);
+
+    if (ready) {
+        d_ptr->handleJobChange();
     }
 }
 

@@ -66,7 +66,7 @@ extern template class Threads<OclThreads>;
 
 
 constexpr const size_t oneMiB   = 1024U * 1024U;
-static const char *kLabel       = "OPENCL";
+static const char *kLabel       = "AMD/OCL";
 static const String kType       = "opencl";
 static std::mutex mutex;
 
@@ -173,11 +173,11 @@ public:
         }
 #       endif
 
-        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") CYAN_BOLD("#%zu ") WHITE_BOLD("%s") "/" WHITE_BOLD("%s"), "OPENCL", platform.index(), platform.name().data(), platform.version().data());
+        Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") CYAN_BOLD("#%zu ") WHITE_BOLD("%s") "/" WHITE_BOLD("%s"), "AMD/OCL", platform.index(), platform.name().data(), platform.version().data());
 
         for (const OclDevice &device : devices) {
             Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") CYAN_BOLD("#%zu") YELLOW(" %s") " %s " WHITE_BOLD("%u MHz") " cu:" WHITE_BOLD("%u") " mem:" CYAN("%zu/%zu") " MB",
-                       "OPENCL GPU",
+                       "GPU/OCL",
                        device.index(),
                        device.topology().toString().data(),
                        device.printableName().data(),
@@ -309,7 +309,12 @@ bool xmrig::OclBackend::isEnabled() const
 
 bool xmrig::OclBackend::isEnabled(const Algorithm &algorithm) const
 {
-    return !d_ptr->controller->config()->cl().threads().get(algorithm).isEmpty();
+    return (algorithm.family() == Algorithm::RANDOM_X ||
+            algorithm.family() == Algorithm::KAWPOW ||
+            algorithm.family() == Algorithm::XELISHASH_FAMILY ||
+            algorithm.family() == Algorithm::NEXAPOW_FAMILY ||
+            algorithm.family() == Algorithm::OGGPOW_FAMILY) &&
+           !d_ptr->controller->config()->cl().threads().get(algorithm).isEmpty();
 }
 
 
@@ -369,7 +374,7 @@ void xmrig::OclBackend::printHashrate(bool details)
         h = "MH/s";
     }
 
-    Log::print(WHITE_BOLD_S "| OPENCL # | AFFINITY | 10s %s | 60s %s | 15m %s |", h, h, h);
+    Log::print(WHITE_BOLD_S "| GPU/OCL # | AFFINITY | 10s %s | 60s %s | 15m %s |", h, h, h);
 
     size_t i = 0;
     for (const auto& data : d_ptr->threads) {

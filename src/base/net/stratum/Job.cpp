@@ -27,6 +27,10 @@
 #include <cassert>
 #include <cstring>
 
+#if defined(_MSC_VER)
+#   include <intrin.h>
+#endif
+
 #include "base/net/stratum/Job.h"
 #include "base/tools/Alignment.h"
 #include "base/tools/Buffer.h"
@@ -34,6 +38,21 @@
 #include "base/tools/cryptonote/BlockTemplate.h"
 #include "base/tools/cryptonote/Signatures.h"
 #include "base/crypto/keccak.h"
+
+namespace {
+
+static uint64_t divide128by64(uint64_t high, uint64_t low, uint64_t divisor, uint64_t &remainder)
+{
+#if defined(_MSC_VER)
+    return _udiv128(high, low, divisor, &remainder);
+#else
+    const unsigned __int128 value = (static_cast<unsigned __int128>(high) << 64) | low;
+    remainder = static_cast<uint64_t>(value % divisor);
+    return static_cast<uint64_t>(value / divisor);
+#endif
+}
+
+}
 
 
 xmrig::Job::Job(bool nicehash, const Algorithm &algorithm, const String &clientId) :
@@ -72,7 +91,7 @@ bool xmrig::Job::setBlob(const char *blob)
     // Zerqavon domain-separates its PoW blob with "ZQVXPOW\x01" and moves
     // the four-byte nonce to the end. Its total size can vary with the
     // CryptoNote transaction-count varint, so the offset is size-dependent.
-    const size_t minSize = algorithm() == Algorithm::RX_ZQV ? 12 : nonceOffset() + nonceSize();
+    const size_t minSize = algorithm().family() == Algorithm::NEXAPOW_FAMILY ? 40 : (algorithm() == Algorithm::RX_ZQV ? 12 : nonceOffset() + nonceSize());
     if (size < minSize || size >= sizeof(m_blob)) {
         return false;
     }
@@ -168,14 +187,25 @@ size_t xmrig::Job::nonceOffset() const
     }
 
     switch (algorithm().family()) {
+    case Algorithm::NEXAPOW_FAMILY:
+        return 36;
+
     case Algorithm::KAWPOW:
+    case Algorithm::OGGPOW_FAMILY:
         return 32;
 
     case Algorithm::GHOSTRIDER:
-        return 76;
+    case Algorithm::CIVICLIGHT_FAMILY:
+    case Algorithm::VERUSHASH_FAMILY:
+    case Algorithm::XELISHASH_FAMILY:
+        return 40;
 
     default:
         break;
+    }
+
+    if (algorithm() == Algorithm::RX_VEXTA) {
+        return 76;
     }
 
     if (algorithm() == Algorithm::RX_YADA) {
@@ -191,9 +221,52 @@ void xmrig::Job::setDiff(uint64_t diff)
     m_diff   = diff;
     m_target = toDiff(diff);
 
+    if (algorithm() == Algorithm::RX_VEXTA && diff != 0) {
+        // Vexta uses the reference miner's 256-bit little-endian check:
+        // hash <= Diff1 / difficulty. The regular fast path is only 64-bit.
+        static constexpr uint8_t diff1[32] = { 0, 0, 0, 0xff, 0xff };
+
+        uint64_t target[4] = { 0, 0, 0, 0 };
+        for (size_t i = 0; i < 4; ++i) {
+            for (size_t j = 0; j < 8; ++j) {
+                target[i] |= uint64_t(diff1[31 - i * 8 - j]) << (j * 8);
+            }
+        }
+
+        uint64_t remainder = 0;
+        for (int i = 3; i >= 0; --i) {
+            target[i] = divide128by64(remainder, target[i], diff, remainder);
+        }
+
+        memcpy(m_vextaTarget, target, sizeof(m_vextaTarget));
+    }
+
 #   ifdef XMRIG_PROXY_PROJECT
     Cvt::toHex(m_rawTarget, sizeof(m_rawTarget), reinterpret_cast<uint8_t *>(&m_target), sizeof(m_target));
 #   endif
+}
+
+
+bool xmrig::Job::checkHash(const uint8_t *hash) const
+{
+    if (algorithm() == Algorithm::RX_VEXTA) {
+        for (int i = 3; i >= 0; --i) {
+            uint64_t value;
+            memcpy(&value, hash + i * sizeof(uint64_t), sizeof(value));
+            if (value < m_vextaTarget[i]) {
+                return true;
+            }
+            if (value > m_vextaTarget[i]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    uint64_t value;
+    memcpy(&value, hash + 24, sizeof(value));
+    return value < m_target;
 }
 
 
@@ -252,7 +325,9 @@ void xmrig::Job::copy(const Job &other)
     m_diff       = other.m_diff;
     m_height     = other.m_height;
     m_target     = other.m_target;
+    memcpy(m_vextaTarget, other.m_vextaTarget, sizeof(m_vextaTarget));
     m_index      = other.m_index;
+    m_poolId     = other.m_poolId;
     m_seed       = other.m_seed;
     m_extraNonce = other.m_extraNonce;
     m_poolWallet = other.m_poolWallet;
@@ -304,7 +379,9 @@ void xmrig::Job::move(Job &&other)
     m_diff       = other.m_diff;
     m_height     = other.m_height;
     m_target     = other.m_target;
+    memcpy(m_vextaTarget, other.m_vextaTarget, sizeof(m_vextaTarget));
     m_index      = other.m_index;
+    m_poolId     = other.m_poolId;
     m_seed       = std::move(other.m_seed);
     m_extraNonce = std::move(other.m_extraNonce);
     m_poolWallet = std::move(other.m_poolWallet);

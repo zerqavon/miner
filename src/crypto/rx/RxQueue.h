@@ -31,6 +31,7 @@
 
 #include <condition_variable>
 #include <mutex>
+#include <utility>
 #include <thread>
 
 
@@ -46,23 +47,39 @@ class RxDataset;
 class RxQueueItem
 {
 public:
-    RxQueueItem(const RxSeed &seed, const std::vector<uint32_t> &nodeset, uint32_t threads, bool hugePages, bool oneGbPages, RxConfig::Mode mode, int priority) :
+    RxQueueItem(const RxSeed &seed, const std::vector<uint32_t> &nodeset, uint32_t threads, bool hugePages, bool oneGbPages, RxConfig::Mode mode, int priority, IRxStorage *storage) :
         hugePages(hugePages),
         oneGbPages(oneGbPages),
         priority(priority),
         mode(mode),
         seed(seed),
         nodeset(nodeset),
-        threads(threads)
+        threads(threads),
+        storage(storage)
     {}
 
-    const bool hugePages;
-    const bool oneGbPages;
-    const int priority;
-    const RxConfig::Mode mode;
-    const RxSeed seed;
-    const std::vector<uint32_t> nodeset;
-    const uint32_t threads;
+    bool hugePages;
+    bool oneGbPages;
+    int priority;
+    RxConfig::Mode mode;
+    RxSeed seed;
+    std::vector<uint32_t> nodeset;
+    uint32_t threads;
+    IRxStorage *storage;
+};
+
+
+class RxStorageItem
+{
+public:
+    RxStorageItem(const RxSeed &seed, IRxStorage *storage) :
+        seed(seed),
+        storage(storage)
+    {}
+
+    RxSeed seed;
+    IRxStorage *storage;
+    bool ready = false;
 };
 
 
@@ -90,17 +107,19 @@ private:
     };
 
     template<typename T> bool isReadyUnsafe(const T &seed) const;
+    IRxStorage *createStorage(const std::vector<uint32_t> &nodeset) const;
+    RxStorageItem *findStorageUnsafe(const RxSeed &seed);
+    const RxStorageItem *findStorageUnsafe(const RxSeed &seed) const;
     void backgroundInit();
     void onReady();
 
     IRxListener *m_listener = nullptr;
-    IRxStorage *m_storage   = nullptr;
-    RxSeed m_seed;
     State m_state = STATE_IDLE;
     std::condition_variable m_cv;
     std::mutex m_mutex;
     std::shared_ptr<Async> m_async;
     std::thread m_thread;
+    std::vector<RxStorageItem> m_storages;
     std::vector<RxQueueItem> m_queue;
 };
 

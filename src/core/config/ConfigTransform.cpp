@@ -153,6 +153,12 @@ void xmrig::ConfigTransform::transform(rapidjson::Document &doc, int key, const 
     case IConfig::PauseOnActiveKey: /* --pause-on-active */
         return set(doc, Config::kPauseOnActive, static_cast<uint64_t>(strtol(arg, nullptr, 10)));
 
+    case IConfig::SplitPool0Key: /* --split-pool0 */
+        return set(doc, Config::kSplitPool0, static_cast<uint64_t>(strtol(arg, nullptr, 10)));
+
+    case IConfig::SplitPool1Key: /* --split-pool1 */
+        return set(doc, Config::kSplitPool1, static_cast<uint64_t>(strtol(arg, nullptr, 10)));
+
 #   ifdef XMRIG_ALGO_ARGON2
     case IConfig::Argon2ImplKey: /* --argon2-impl */
         return set(doc, CpuConfig::kField, CpuConfig::kArgon2Impl, arg);

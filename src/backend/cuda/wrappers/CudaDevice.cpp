@@ -107,7 +107,13 @@ uint32_t xmrig::CudaDevice::smx() const
 
 void xmrig::CudaDevice::generate(const Algorithm &algorithm, CudaThreads &threads) const
 {
-    if (!CudaLib::deviceInfo(m_ctx, -1, -1, algorithm)) {
+    const auto family = algorithm.family();
+    const bool externalGpuAlgo =
+        family == Algorithm::XELISHASH_FAMILY ||
+        family == Algorithm::NEXAPOW_FAMILY ||
+        family == Algorithm::OGGPOW_FAMILY;
+
+    if (!externalGpuAlgo && !CudaLib::deviceInfo(m_ctx, -1, -1, algorithm)) {
         return;
     }
 

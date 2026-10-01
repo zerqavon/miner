@@ -80,10 +80,16 @@ public:
         RX_SFX          = 0x72151273,   // "rx/sfx"           RandomSFX (Safex Cash).
         RX_YADA         = 0x72151279,   // "rx/yada"          RandomYada (YadaCoin).
         RX_ZQV          = 0x7215127a,   // "rx/zqv"           Zerqavon ZQVXPOW v1 + RandomX.
+        RX_VEXTA        = 0x72151276,   // "rx/vexta"         Vexta RandomX.
         AR2_CHUKWA      = 0x61130000,   // "argon2/chukwa"    Argon2id (Chukwa).
         AR2_CHUKWA_V2   = 0x61140000,   // "argon2/chukwav2"  Argon2id (Chukwa v2).
         AR2_WRKZ        = 0x61120000,   // "argon2/wrkz"      Argon2id (WRKZ)
         KAWPOW_RVN      = 0x6b0f0000,   // "kawpow/rvn"       KawPow (RVN)
+        CIVICLIGHT      = 0x76000000,   // "civiclight"       CivicLight PoW
+        VERUSHASH       = 0x77000000,   // "verushash"        VerusHash v2.2
+        XELISHASH_V3    = 0x78000000,   // "xelishash/v3"    XelisHash v3
+        NEXAPOW         = 0x79000000,   // "nexapow"          NexaPoW
+        OGGPOW          = 0x7a000000,   // "oggpow"           OggPoW
     };
 
     enum Family : uint32_t {
@@ -97,7 +103,12 @@ public:
         RANDOM_X        = 0x72000000,
         ARGON2          = 0x61000000,
         KAWPOW          = 0x6b000000,
-        GHOSTRIDER      = 0x6c000000
+        GHOSTRIDER      = 0x6c000000,
+        CIVICLIGHT_FAMILY = 0x76000000,
+        VERUSHASH_FAMILY  = 0x77000000,
+        XELISHASH_FAMILY  = 0x78000000,
+        NEXAPOW_FAMILY    = 0x79000000,
+        OGGPOW_FAMILY     = 0x7a000000
     };
 
     static const char *kINVALID;
@@ -148,6 +159,7 @@ public:
     static const char *kRX_SFX;
     static const char *kRX_YADA;
     static const char *kRX_ZQV;
+    static const char *kRX_VEXTA;
 #   endif
 
 #   ifdef XMRIG_ALGO_ARGON2
@@ -166,6 +178,12 @@ public:
     static const char* kGHOSTRIDER;
     static const char* kGHOSTRIDER_RTM;
 #   endif
+
+    static const char *kCIVICLIGHT;
+    static const char *kVERUSHASH;
+    static const char *kXELISHASH_V3;
+    static const char *kNEXAPOW;
+    static const char *kOGGPOW;
 
     inline Algorithm() = default;
     inline Algorithm(const char *algo) : m_id(parse(algo))  {}

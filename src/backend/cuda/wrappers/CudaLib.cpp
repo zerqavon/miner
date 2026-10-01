@@ -41,11 +41,11 @@ enum Version : uint32_t
 static uv_lib_t cudaLib;
 
 #if defined(__APPLE__)
-static String defaultLoader = "libxmrig-cuda.dylib";
+static String defaultLoader = "libliquidminer-cuda.dylib";
 #elif defined(_WIN32)
-static String defaultLoader = "xmrig-cuda.dll";
+static String defaultLoader = "liquidminer-cuda.dll";
 #else
-static String defaultLoader = "libxmrig-cuda.so";
+static String defaultLoader = "libliquidminer-cuda.so";
 #endif
 
 

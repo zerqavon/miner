@@ -175,6 +175,7 @@ public:
         }
 
         auto primary = dataset(id);
+        LOG_INFO("%s" MAGENTA_BOLD("preparing dataset") " (RandomX full-memory initialization; please wait)", Tags::randomx());
         primary->init(m_seed.data(), threads, priority);
 
         printDatasetReady(id, ts);

@@ -323,7 +323,7 @@ const char *xmrig::BasicCpuInfo::backend() const
 }
 
 
-xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint32_t) const
+xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint32_t limit) const
 {
     const size_t count = std::thread::hardware_concurrency();
 
@@ -359,6 +359,14 @@ xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint3
 
 #   ifdef XMRIG_ALGO_RANDOMX
     if (f == Algorithm::RANDOM_X) {
+        // Vexta's pool-compatible RandomX workload benefits from one VM per
+        // logical processor on both current AMD and Intel CPUs. Keep this
+        // derived from the detected CPU instead of assuming a fixed thread
+        // count; explicit -t still overrides it.
+        if (algorithm == Algorithm::RX_VEXTA) {
+            return CpuThreads(count, 1);
+        }
+
         if (algorithm == Algorithm::RX_WOW) {
             return count;
         }
@@ -378,6 +386,22 @@ xmrig::CpuThreads xmrig::BasicCpuInfo::threads(const Algorithm &algorithm, uint3
         return CpuThreads(std::max<size_t>(count / 2, 1), 8);
     }
 #   endif
+
+    if (f == Algorithm::CIVICLIGHT_FAMILY) {
+        if (limit > 0 && limit < 100) {
+            return std::max<size_t>((count * limit + 50) / 100, 1);
+        }
+
+        return count;
+    }
+
+    if (f == Algorithm::VERUSHASH_FAMILY) {
+        return count;
+    }
+
+    if (f == Algorithm::XELISHASH_FAMILY) {
+        return count;
+    }
 
     return CpuThreads(std::max<size_t>(count / 2, 1), 1);
 }

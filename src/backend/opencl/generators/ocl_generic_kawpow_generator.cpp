@@ -41,6 +41,7 @@ bool ocl_generic_kawpow_generator(const OclDevice &device, const Algorithm &algo
     }
 
     bool isNavi = false;
+    bool isModernNavi = false;
 
     switch (device.type()) {
     case OclDevice::Navi_10:
@@ -50,13 +51,25 @@ bool ocl_generic_kawpow_generator(const OclDevice &device, const Algorithm &algo
         isNavi = true;
         break;
 
+    case OclDevice::Navi_31:
+    case OclDevice::Navi_32:
+    case OclDevice::Navi_33:
+    case OclDevice::Navi_44:
+    case OclDevice::Navi_48:
+        isNavi = true;
+        isModernNavi = true;
+        break;
+
     default:
         break;
     }
 
     const uint32_t cu_intensity = isNavi ? 524288 : 262144;
-    const uint32_t worksize = isNavi ? 128 : 256;
-    threads.add(OclThread(device.index(), device.computeUnits() * cu_intensity, worksize, 1));
+    const uint32_t worksize = isModernNavi ? 256 : (isNavi ? 128 : 256);
+    const uint32_t effectiveComputeUnits = device.computeUnits() * (isModernNavi ? 2 : 1);
+    const uint32_t intensity = effectiveComputeUnits * cu_intensity;
+
+    threads.add(OclThread(device.index(), intensity, worksize, 1));
 
     return true;
 }

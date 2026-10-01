@@ -61,10 +61,14 @@ private:
     Algorithm m_algorithm;
     Buffer m_data;
 
+    static inline bool isMoneroDatasetCompatible(Algorithm algorithm)
+    {
+        return algorithm == Algorithm::RX_0 || algorithm == Algorithm::RX_V2 || algorithm == Algorithm::RX_ZQV;
+    }
+
     inline bool isEqualSeedAlgo(Algorithm other) const {
         return (m_algorithm == other) ||
-              ((m_algorithm == Algorithm::RX_0)  && (other == Algorithm::RX_V2)) ||
-              ((m_algorithm == Algorithm::RX_V2) && (other == Algorithm::RX_0));
+              (isMoneroDatasetCompatible(m_algorithm) && isMoneroDatasetCompatible(other));
     }
 };
 

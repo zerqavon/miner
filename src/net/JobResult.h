@@ -48,6 +48,7 @@ public:
     inline JobResult(const Job &job, uint64_t nonce, const uint8_t *result, const uint8_t* header_hash = nullptr, const uint8_t *mix_hash = nullptr, const uint8_t* extra_data = nullptr) :
         algorithm(job.algorithm()),
         index(job.index()),
+        poolId(job.poolId()),
         clientId(job.clientId()),
         jobId(job.id()),
         backend(job.backend()),
@@ -55,6 +56,10 @@ public:
         diff(job.diff())
     {
         memcpy(m_result, result, sizeof(m_result));
+
+        if (algorithm.family() == Algorithm::NEXAPOW_FAMILY) {
+            memcpy(m_nexaNoncePrefix, job.blob() + 32, sizeof(m_nexaNoncePrefix));
+        }
 
         if (header_hash) {
             memcpy(m_headerHash, header_hash, sizeof(m_headerHash));
@@ -79,6 +84,7 @@ public:
     inline JobResult(const Job &job) :
         algorithm(job.algorithm()),
         index(job.index()),
+        poolId(job.poolId()),
         clientId(job.clientId()),
         jobId(job.id()),
         backend(job.backend()),
@@ -92,22 +98,26 @@ public:
     inline uint8_t *result()                 { return m_result; }
     inline const uint8_t *headerHash() const { return m_headerHash; }
     inline const uint8_t *mixHash() const    { return m_mixHash; }
+    inline const uint8_t *nexaNoncePrefix() const { return m_nexaNoncePrefix; }
 
     inline const uint8_t *minerSignature() const { return m_hasMinerSignature ? m_extraData : nullptr; }
     inline const uint8_t *commitment() const { return m_hasCommitment ? m_extraData : nullptr; }
 
     const Algorithm algorithm;
     const uint8_t index;
+    const uint8_t poolId;
     const String clientId;
     const String jobId;
     const uint32_t backend;
     const uint64_t nonce;
     const uint64_t diff;
+    bool switchOnAccept = false;
 
 private:
     uint8_t m_result[32]     = { 0 };
     uint8_t m_headerHash[32] = { 0 };
     uint8_t m_mixHash[32]    = { 0 };
+    uint8_t m_nexaNoncePrefix[8] = { 0 };
 
     uint8_t m_extraData[RANDOMX_HASH_SIZE * 2] = { 0 };
 

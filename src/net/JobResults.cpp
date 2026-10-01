@@ -31,6 +31,7 @@
 #include "base/tools/Object.h"
 #include "net/interfaces/IJobResultListener.h"
 #include "net/JobResult.h"
+#include "3rdparty/libethash/ethash.h"
 
 
 #ifdef XMRIG_ALGO_RANDOMX
@@ -44,6 +45,15 @@
 #   include "crypto/kawpow/KPCache.h"
 #   include "crypto/kawpow/KPHash.h"
 #endif
+
+#include "crypto/civiclight/CivicLight.h"
+#ifdef XMRIG_ALGO_VERUSHASH
+#include "crypto/verus_hash.h"
+#endif
+#ifdef XMRIG_ALGO_XELISHASH
+#include "crypto/xelis/XelisHash.h"
+#endif
+#include "crypto/nexapow/NexaPow.h"
 
 
 #if defined(XMRIG_FEATURE_OPENCL) || defined(XMRIG_FEATURE_CUDA)
@@ -75,10 +85,15 @@ public:
         device_index(device_index)
     {
         memcpy(nonces.data(), results, sizeof(uint32_t) * count);
+        if (job.algorithm().family() == Algorithm::OGGPOW_FAMILY) {
+            mix.resize(count * 8);
+            memcpy(mix.data(), results + 16, sizeof(uint32_t) * mix.size());
+        }
     }
 
     Job job;
     std::vector<uint32_t> nonces;
+    std::vector<uint32_t> mix;
     uint32_t device_index;
 };
 
@@ -102,7 +117,7 @@ public:
 
 static inline void checkHash(const JobBundle &bundle, std::vector<JobResult> &results, uint32_t nonce, uint8_t hash[32], uint32_t &errors)
 {
-    if (*reinterpret_cast<uint64_t*>(hash + 24) < bundle.job.target()) {
+    if (bundle.job.checkHash(hash)) {
         results.emplace_back(bundle.job, nonce, hash);
     }
     else {
@@ -176,6 +191,75 @@ static void getResults(JobBundle &bundle, std::vector<JobResult> &results, uint3
             }
         }
 #       endif
+    }
+    else if (algorithm.family() == Algorithm::CIVICLIGHT_FAMILY) {
+        for (uint32_t nonce : bundle.nonces) {
+            *bundle.job.nonce() = nonce;
+
+            civiclight::hash(bundle.job.blob(), bundle.job.size(), hash);
+
+            checkHash(bundle, results, nonce, hash, errors);
+        }
+    }
+    else if (algorithm.family() == Algorithm::OGGPOW_FAMILY) {
+        if (bundle.mix.size() < bundle.nonces.size() * 8) {
+            errors += static_cast<uint32_t>(bundle.nonces.size());
+            delete memory;
+            return;
+        }
+        for (size_t i = 0; i < bundle.nonces.size(); ++i) {
+            const uint32_t nonce = bundle.nonces[i];
+            *bundle.job.nonce() = nonce;
+
+            uint32_t state[25] = {};
+            memcpy(state, bundle.job.blob(), 32);
+            memcpy(state + 8, &nonce, sizeof(nonce));
+            memcpy(state + 10, bundle.mix.data() + i * 8, 32);
+            ethash_keccakf800(state);
+
+            uint8_t mixHash[32];
+            memcpy(mixHash, bundle.mix.data() + i * 8, sizeof(mixHash));
+            results.emplace_back(bundle.job, nonce, reinterpret_cast<const uint8_t *>(state), bundle.job.blob(), mixHash);
+        }
+    }
+#ifdef XMRIG_ALGO_VERUSHASH
+    else if (algorithm.family() == Algorithm::VERUSHASH_FAMILY) {
+        for (uint32_t nonce : bundle.nonces) {
+            *bundle.job.nonce() = nonce;
+            verus_hash_v2_2(hash, bundle.job.blob(), bundle.job.size());
+            checkHash(bundle, results, nonce, hash, errors);
+        }
+    }
+#endif
+#ifdef XMRIG_ALGO_XELISHASH
+    else if (algorithm.family() == Algorithm::XELISHASH_FAMILY) {
+        alignas(64) uint64_t scratch[LIQUIDMINER_XELIS_SCRATCH_WORDS]{};
+        uint8_t input[LIQUIDMINER_XELIS_INPUT_SIZE]{};
+        for (uint32_t nonce : bundle.nonces) {
+            *bundle.job.nonce() = nonce;
+            memset(input, 0, sizeof(input));
+            const size_t copy = std::min(bundle.job.size(), sizeof(input));
+            memcpy(input, bundle.job.blob(), copy);
+            xelis_hash_v3(input, hash, scratch);
+            checkHash(bundle, results, nonce, hash, errors);
+        }
+    }
+#endif
+    else if (algorithm.family() == Algorithm::NEXAPOW_FAMILY) {
+        uint8_t nonce8[8]{};
+        memcpy(nonce8, bundle.job.blob() + 32, 4);
+        for (uint32_t nonce : bundle.nonces) {
+            *bundle.job.nonce() = nonce;
+            for (uint32_t i = 0; i < 4; ++i) {
+                nonce8[4 + i] = static_cast<uint8_t>(nonce >> (24 - i * 8));
+            }
+            if (nexapow::hashLegacy(bundle.job.blob(), nonce8, hash)) {
+                checkHash(bundle, results, nonce, hash, errors);
+            }
+            else {
+                ++errors;
+            }
+        }
     }
     else {
         cryptonight_ctx *ctx[1];

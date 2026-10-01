@@ -33,6 +33,7 @@
 #include "base/tools/String.h"
 #include "core/config/Config.h"
 #include "core/Controller.h"
+#include "core/Miner.h"
 #include "crypto/common/VirtualMemory.h"
 #include "crypto/rx/Rx.h"
 #include "crypto/rx/RxDataset.h"
@@ -62,6 +63,83 @@ extern template class Threads<CpuThreads>;
 
 static const String kType   = "cpu";
 static std::mutex mutex;
+
+
+static std::vector<CpuLaunchData> sliceDualCpuThreads(std::vector<CpuLaunchData> &&pool0, std::vector<CpuLaunchData> &&pool1, int majorityPool, uint32_t splitPool0, uint32_t splitPool1)
+{
+    std::vector<CpuLaunchData> out;
+
+    if (pool0.empty() || pool1.empty()) {
+        return out;
+    }
+
+    const size_t total = std::max(pool0.size(), pool1.size());
+    const bool fixedSplit = splitPool0 > 0 && splitPool1 > 0 && splitPool0 < 100 && splitPool1 < 100 && (splitPool0 + splitPool1) == 100;
+
+    if (fixedSplit) {
+        size_t pool0Count = static_cast<size_t>((total * splitPool0 + 50) / 100);
+        pool0Count = std::min(std::max<size_t>(1, pool0Count), total > 1 ? total - 1 : 1);
+        const size_t pool1Count = std::max<size_t>(1, total - pool0Count);
+
+        out.reserve(std::min(pool0Count, pool0.size()) + std::min(pool1Count, pool1.size()));
+
+        for (size_t i = 0; i < pool0.size() && i < pool0Count; ++i) {
+            out.emplace_back(std::move(pool0[i]));
+        }
+
+        for (size_t i = 0; i < pool1.size() && i < pool1Count; ++i) {
+            out.emplace_back(std::move(pool1[i]));
+        }
+
+        return out;
+    }
+
+    const size_t cores = Cpu::info()->cores();
+    const size_t logical = Cpu::info()->threads();
+    const size_t threadsPerCore = cores > 0 ? std::max<size_t>(logical / cores, 1) : 1;
+    const size_t minorityCount = std::min(std::max<size_t>(1, threadsPerCore), total > 1 ? total - 1 : 1);
+    const size_t majorityCount = std::max<size_t>(1, total - minorityCount);
+
+    auto &majority = majorityPool == 1 ? pool1 : pool0;
+    auto &minority = majorityPool == 1 ? pool0 : pool1;
+
+    out.reserve(std::min(majorityCount, majority.size()) + std::min(minorityCount, minority.size()));
+
+    for (size_t i = 0; i < minority.size() && i < minorityCount; ++i) {
+        out.emplace_back(std::move(minority[i]));
+    }
+
+    const size_t majorityOffset = majority.size() > minorityCount ? minorityCount : 0;
+    for (size_t n = 0; n < majority.size() && n < majorityCount; ++n) {
+        const size_t i = majorityOffset + n < majority.size() ? majorityOffset + n : n;
+        out.emplace_back(std::move(majority[i]));
+    }
+
+    return out;
+}
+
+
+static bool sameDualCpuLayout(const std::vector<CpuLaunchData> &a, const std::vector<CpuLaunchData> &b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+
+    for (size_t i = 0; i < a.size(); ++i) {
+        if (a[i].poolId != b[i].poolId
+            || a[i].algorithm.id() != b[i].algorithm.id()
+            || a[i].intensity != b[i].intensity
+            || a[i].affinity != b[i].affinity
+            || a[i].priority != b[i].priority
+            || a[i].hugePages != b[i].hugePages
+            || a[i].hwAES != b[i].hwAES
+            || a[i].assembly != b[i].assembly) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 
 struct CpuLaunchStatus
@@ -352,12 +430,58 @@ void xmrig::CpuBackend::setJob(const Job &job)
     const auto &cpu = d_ptr->controller->config()->cpu();
 
     auto threads = cpu.get(d_ptr->controller->miner(), job.algorithm());
-    if (!d_ptr->threads.empty() && d_ptr->threads.size() == threads.size() && std::equal(d_ptr->threads.begin(), d_ptr->threads.end(), threads.begin())) {
+    String profileName = cpu.threads().profileName(job.algorithm());
+    Algorithm algo = job.algorithm();
+
+    if (d_ptr->controller->miner()->isDualCpuSplit()) {
+        const Job pool0 = d_ptr->controller->miner()->poolJob(0);
+        const Job pool1 = d_ptr->controller->miner()->poolJob(1);
+
+        auto pool0Threads = cpu.get(d_ptr->controller->miner(), pool0.algorithm());
+        auto pool1Threads = cpu.get(d_ptr->controller->miner(), pool1.algorithm());
+
+        if (!pool0Threads.empty() && !pool1Threads.empty()) {
+            std::vector<CpuLaunchData> tagged0;
+            std::vector<CpuLaunchData> tagged1;
+
+            tagged0.reserve(pool0Threads.size());
+            tagged1.reserve(pool1Threads.size());
+
+            std::vector<int64_t> affinities0;
+            std::vector<int64_t> affinities1;
+            affinities0.reserve(pool0Threads.size());
+            affinities1.reserve(pool1Threads.size());
+
+            for (const auto &data : pool0Threads) {
+                affinities0.emplace_back(data.affinity);
+            }
+
+            for (const auto &data : pool1Threads) {
+                affinities1.emplace_back(data.affinity);
+            }
+
+            for (const auto &data : pool0Threads) {
+                tagged0.emplace_back(d_ptr->controller->miner(), pool0.algorithm(), cpu, CpuThread(data.affinity, data.intensity), pool0Threads.size(), affinities0, 0);
+            }
+
+            for (const auto &data : pool1Threads) {
+                tagged1.emplace_back(d_ptr->controller->miner(), pool1.algorithm(), cpu, CpuThread(data.affinity, data.intensity), pool1Threads.size(), affinities1, 1);
+            }
+
+            threads = sliceDualCpuThreads(std::move(tagged0), std::move(tagged1), d_ptr->controller->miner()->activePool(), d_ptr->controller->config()->splitPool0(), d_ptr->controller->config()->splitPool1());
+            profileName = "dual-cpu";
+            algo = pool0.algorithm();
+        }
+    }
+
+    if (!d_ptr->threads.empty()
+        && ((profileName == "dual-cpu" && d_ptr->profileName == "dual-cpu" && sameDualCpuLayout(d_ptr->threads, threads))
+            || (d_ptr->threads.size() == threads.size() && std::equal(d_ptr->threads.begin(), d_ptr->threads.end(), threads.begin())))) {
         return;
     }
 
-    d_ptr->algo         = job.algorithm();
-    d_ptr->profileName  = cpu.threads().profileName(job.algorithm());
+    d_ptr->algo         = algo;
+    d_ptr->profileName  = profileName;
 
     if (d_ptr->profileName.isNull() || threads.empty()) {
         LOG_WARN("%s " RED_BOLD("disabled") YELLOW(" (no suitable configuration found)"), Tags::cpu());

@@ -50,7 +50,9 @@ xmrig::RxQueue::~RxQueue()
 
     m_thread.join();
 
-    delete m_storage;
+    for (auto &item : m_storages) {
+        delete item.storage;
+    }
 }
 
 
@@ -58,8 +60,9 @@ xmrig::RxDataset *xmrig::RxQueue::dataset(const Job &job, uint32_t nodeId)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    if (isReadyUnsafe(job)) {
-        return m_storage->dataset(job, nodeId);
+    const auto *item = findStorageUnsafe(RxSeed(job));
+    if (item && item->ready) {
+        return item->storage->dataset(job, nodeId);
     }
 
     return nullptr;
@@ -70,7 +73,14 @@ xmrig::HugePagesInfo xmrig::RxQueue::hugePages()
 {
     std::lock_guard<std::mutex> lock(m_mutex);
 
-    return m_storage && m_state == STATE_IDLE ? m_storage->hugePages() : HugePagesInfo();
+    HugePagesInfo pages;
+    for (const auto &item : m_storages) {
+        if (item.ready) {
+            pages += item.storage->hugePages();
+        }
+    }
+
+    return pages;
 }
 
 
@@ -87,24 +97,20 @@ void xmrig::RxQueue::enqueue(const RxSeed &seed, const std::vector<uint32_t> &no
 {
     std::unique_lock<std::mutex> lock(m_mutex);
 
-    if (!m_storage) {
-#       ifdef XMRIG_FEATURE_HWLOC
-        if (!nodeset.empty()) {
-            m_storage = new RxNUMAStorage(nodeset);
-        }
-        else
-#       endif
-        {
-            m_storage = new RxBasicStorage();
-        }
-    }
-
-    if (m_state == STATE_PENDING && m_seed == seed) {
+    auto *storage = findStorageUnsafe(seed);
+    if (storage) {
         return;
     }
 
-    m_queue.emplace_back(seed, nodeset, threads, hugePages, oneGbPages, mode, priority);
-    m_seed  = seed;
+    if (m_storages.size() >= 2) {
+        delete m_storages.front().storage;
+        m_storages.erase(m_storages.begin());
+    }
+
+    m_storages.emplace_back(seed, createStorage(nodeset));
+    storage = &m_storages.back();
+
+    m_queue.emplace_back(seed, nodeset, threads, hugePages, oneGbPages, mode, priority, storage->storage);
     m_state = STATE_PENDING;
 
     lock.unlock();
@@ -116,7 +122,45 @@ void xmrig::RxQueue::enqueue(const RxSeed &seed, const std::vector<uint32_t> &no
 template<typename T>
 bool xmrig::RxQueue::isReadyUnsafe(const T &seed) const
 {
-    return m_storage != nullptr && m_storage->isAllocated() && m_state == STATE_IDLE && m_seed == seed;
+    const auto *item = findStorageUnsafe(RxSeed(seed));
+
+    return item && item->ready && item->storage->isAllocated();
+}
+
+
+xmrig::IRxStorage *xmrig::RxQueue::createStorage(const std::vector<uint32_t> &nodeset) const
+{
+#   ifdef XMRIG_FEATURE_HWLOC
+    if (!nodeset.empty()) {
+        return new RxNUMAStorage(nodeset);
+    }
+#   endif
+
+    return new RxBasicStorage();
+}
+
+
+xmrig::RxStorageItem *xmrig::RxQueue::findStorageUnsafe(const RxSeed &seed)
+{
+    for (auto &item : m_storages) {
+        if (item.seed == seed) {
+            return &item;
+        }
+    }
+
+    return nullptr;
+}
+
+
+const xmrig::RxStorageItem *xmrig::RxQueue::findStorageUnsafe(const RxSeed &seed) const
+{
+    for (const auto &item : m_storages) {
+        if (item.seed == seed) {
+            return &item;
+        }
+    }
+
+    return nullptr;
 }
 
 
@@ -133,8 +177,8 @@ void xmrig::RxQueue::backgroundInit()
             continue;
         }
 
-        const auto item = m_queue.back();
-        m_queue.clear();
+        const auto item = m_queue.front();
+        m_queue.erase(m_queue.begin());
 
         lock.unlock();
 
@@ -146,18 +190,22 @@ void xmrig::RxQueue::backgroundInit()
                  Cvt::toHex(item.seed.data().data(), 8).data()
                  );
 
-        m_storage->init(item.seed, item.threads, item.hugePages, item.oneGbPages, item.mode, item.priority);
+        item.storage->init(item.seed, item.threads, item.hugePages, item.oneGbPages, item.mode, item.priority);
 
         lock.lock();
 
-        if (m_state == STATE_SHUTDOWN || !m_queue.empty()) {
+        if (m_state == STATE_SHUTDOWN) {
             continue;
         }
 
-        // Update seed here again in case there was more than one item in the queue
-        m_seed = item.seed;
-        m_state = STATE_IDLE;
-        m_async->send();
+        if (auto *storage = findStorageUnsafe(item.seed)) {
+            storage->ready = item.storage->isAllocated();
+        }
+
+        if (m_queue.empty()) {
+            m_state = STATE_IDLE;
+            m_async->send();
+        }
     }
 }
 

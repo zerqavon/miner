@@ -25,6 +25,9 @@
 #include "backend/cpu/CpuLaunchData.h"
 #include "base/tools/Object.h"
 #include "net/JobResult.h"
+#ifdef XMRIG_ALGO_XELISHASH
+#include "crypto/xelis/XelisHash.h"
+#endif
 
 
 #ifdef XMRIG_ALGO_RANDOMX
@@ -91,6 +94,7 @@ private:
     const bool m_yield;
     const CnHash::AlgoVariant m_av;
     const Miner *m_miner;
+    const int8_t m_poolId;
     const size_t m_threads;
     cryptonight_ctx *m_ctx[N];
     VirtualMemory *m_memory = nullptr;
@@ -103,6 +107,10 @@ private:
 
 #   ifdef XMRIG_ALGO_GHOSTRIDER
     ghostrider::HelperThread* m_ghHelper = nullptr;
+#   endif
+
+#   ifdef XMRIG_ALGO_XELISHASH
+    alignas(64) uint64_t m_xelisScratch[LIQUIDMINER_XELIS_SCRATCH_WORDS]{};
 #   endif
 
 #   ifdef XMRIG_FEATURE_BENCHMARK

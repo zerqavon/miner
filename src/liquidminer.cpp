@@ -1,6 +1,6 @@
-/* XMRig
+/* LiquidMiner
  * Copyright (c) 2018-2021 SChernykh   <https://github.com/SChernykh>
- * Copyright (c) 2016-2021 XMRig       <https://github.com/xmrig>, <support@xmrig.com>
+ * Based on the XMRig miner entrypoint. See NOTICE.md for upstream attribution.
  *
  *   This program is free software: you can redistribute it and/or modify
  *   it under the terms of the GNU General Public License as published by

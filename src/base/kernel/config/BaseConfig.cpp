@@ -142,7 +142,14 @@ void xmrig::BaseConfig::printVersions()
     snprintf(buf, sizeof buf, "MSVC/%d", MSVC_VERSION);
 #   endif
 
-    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") CYAN_BOLD("%s/%s") WHITE_BOLD(" %s") WHITE_BOLD(" (built for %s") WHITE_BOLD(" %s,") WHITE_BOLD(" %s)"), "ABOUT", APP_NAME, APP_VERSION, buf, APP_OS, APP_ARCH, APP_BITS);
+    Log::print(CYAN_BOLD("    __    _             _     _ __  ___ _               "));
+    Log::print(CYAN_BOLD("   / /   (_)____ ___  (_)___/ //  |/  /(_)___  ___  _____"));
+    Log::print(CYAN_BOLD("  / /   / // __ `/ / / // _  // /|_/ // // _ \\/ _ \\/ ___/"));
+    Log::print(CYAN_BOLD(" / /___/ // /_/ / /_/ //  __// /  / // //  __/  __/ /    "));
+    Log::print(CYAN_BOLD("/_____/_/ \\__, /\\__,_/ \\___//_/  /_//_/ \\___/\\___/_/     "));
+    Log::print(CYAN_BOLD("          /____/                                           "));
+
+    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13s") CYAN_BOLD("%s/%s") WHITE_BOLD(" %s") WHITE_BOLD(" (for %s") WHITE_BOLD(" %s,") WHITE_BOLD(" %s)"), "LIQUID", APP_NAME, APP_VERSION, buf, APP_OS, APP_ARCH, APP_BITS);
 
     std::string libs;
 
@@ -163,7 +170,7 @@ void xmrig::BaseConfig::printVersions()
     libs += Cpu::info()->backend();
 #   endif
 
-    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13slibuv/%s %s"), "LIBS", uv_version_string(), libs.c_str());
+    Log::print(GREEN_BOLD(" * ") WHITE_BOLD("%-13slibuv/%s %s"), "CORE", uv_version_string(), libs.c_str());
 }
 
 

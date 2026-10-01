@@ -322,7 +322,7 @@ void xmrig::BenchClient::onCreateReply(const rapidjson::Value &value)
 
 void xmrig::BenchClient::onDoneReply(const rapidjson::Value &)
 {
-    LOG_NOTICE("%s " WHITE_BOLD("benchmark submitted ") CYAN_BOLD("https://xmrig.com/benchmark/%s"), tag(), m_job.id().data());
+    LOG_NOTICE("%s " WHITE_BOLD("benchmark submitted ") CYAN_BOLD("local id %s"), tag(), m_job.id().data());
     printExit();
 }
 

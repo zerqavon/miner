@@ -7,13 +7,68 @@ endif()
 if (WITH_OPENCL)
     add_definitions(/DXMRIG_FEATURE_OPENCL /DCL_USE_DEPRECATED_OPENCL_1_2_APIS)
 
+    # OggPoW is a ProgPoW variant.  Its chain-specific kernel and generated
+    # program are kept as a build dependency so the OpenCL backend uses the
+    # same work format as the reference Ogg miner.
+    set(OGGPOW_SOURCE_DIR "${CMAKE_SOURCE_DIR}/thirdparty-bench/algo-sources/oggpow-miner")
+    set(OGGPOW_KERNEL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/oggpow_cl.h")
+    set(XELIS_KERNEL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/xelishash_v3_cl.h")
+    set(NEXAPOW_KERNEL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/nexapow_sha_cl.h")
+    set(NEXAPOW_HIP_KERNEL_HEADER "${CMAKE_CURRENT_BINARY_DIR}/nexapow_hip_cl.h")
+    set(NEXAPOW_ECC_HEADER "${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexa/inc_ecc_secp256k1.h")
+    set(NEXAPOW_ECC_SOURCE "${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexa/inc_ecc_secp256k1.cl")
+    add_custom_command(
+        OUTPUT ${OGGPOW_KERNEL_HEADER}
+        COMMAND ${CMAKE_COMMAND}
+            -DTXT2STR_SOURCE_FILE=${OGGPOW_SOURCE_DIR}/libethash-cl/CLMiner_kernel.cl
+            -DTXT2STR_VARIABLE_NAME=oggpow_cl
+            -DTXT2STR_HEADER_FILE=${OGGPOW_KERNEL_HEADER}
+            -P ${OGGPOW_SOURCE_DIR}/cmake/txt2str.cmake
+        DEPENDS ${OGGPOW_SOURCE_DIR}/libethash-cl/CLMiner_kernel.cl
+                ${OGGPOW_SOURCE_DIR}/cmake/txt2str.cmake
+        VERBATIM)
+    add_custom_command(
+        OUTPUT ${NEXAPOW_HIP_KERNEL_HEADER}
+        COMMAND ${CMAKE_COMMAND}
+            -DTXT2STR_SOURCE_FILE=${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexapow/nexapow_sha.cl
+            -DTXT2STR_ECC_HEADER=${NEXAPOW_ECC_HEADER}
+            -DTXT2STR_ECC_SOURCE=${NEXAPOW_ECC_SOURCE}
+            -DTXT2STR_VARIABLE_NAME=nexapow_hip_cl
+            -DTXT2STR_HEADER_FILE=${NEXAPOW_HIP_KERNEL_HEADER}
+            -P ${CMAKE_SOURCE_DIR}/cmake/scripts/nexapow_hip_txt2str.cmake
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexapow/nexapow_sha.cl
+                ${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexa/nexapow_g_table.cl
+                ${NEXAPOW_ECC_HEADER} ${NEXAPOW_ECC_SOURCE}
+                ${CMAKE_SOURCE_DIR}/cmake/scripts/nexapow_hip_txt2str.cmake
+        VERBATIM)
+    add_custom_command(
+        OUTPUT ${XELIS_KERNEL_HEADER}
+        COMMAND ${CMAKE_COMMAND}
+            -DTXT2STR_SOURCE_FILE=${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/xelis/xelishash_v3.cl
+            -DTXT2STR_VARIABLE_NAME=xelishash_v3_cl
+            -DTXT2STR_HEADER_FILE=${XELIS_KERNEL_HEADER}
+            -P ${OGGPOW_SOURCE_DIR}/cmake/txt2str.cmake
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/xelis/xelishash_v3.cl
+                ${OGGPOW_SOURCE_DIR}/cmake/txt2str.cmake
+        VERBATIM)
+    add_custom_command(
+        OUTPUT ${NEXAPOW_KERNEL_HEADER}
+        COMMAND ${CMAKE_COMMAND}
+            -DTXT2STR_SOURCE_FILE=${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexapow/nexapow_sha.cl
+            -DTXT2STR_ECC_HEADER=${NEXAPOW_ECC_HEADER}
+            -DTXT2STR_ECC_SOURCE=${NEXAPOW_ECC_SOURCE}
+            -DTXT2STR_VARIABLE_NAME=nexapow_sha_cl
+            -DTXT2STR_HEADER_FILE=${NEXAPOW_KERNEL_HEADER}
+            -P ${CMAKE_SOURCE_DIR}/cmake/scripts/nexapow_txt2str.cmake
+        DEPENDS ${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexapow/nexapow_sha.cl
+                ${CMAKE_SOURCE_DIR}/src/backend/opencl/cl/nexa/nexapow_g_table.cl
+                ${NEXAPOW_ECC_HEADER} ${NEXAPOW_ECC_SOURCE}
+                ${CMAKE_SOURCE_DIR}/cmake/scripts/nexapow_txt2str.cmake
+        VERBATIM)
+
     set(HEADERS_BACKEND_OPENCL
         src/backend/opencl/cl/OclSource.h
         src/backend/opencl/interfaces/IOclRunner.h
-        src/backend/opencl/kernels/Cn0Kernel.h
-        src/backend/opencl/kernels/Cn1Kernel.h
-        src/backend/opencl/kernels/Cn2Kernel.h
-        src/backend/opencl/kernels/CnBranchKernel.h
         src/backend/opencl/OclBackend.h
         src/backend/opencl/OclCache.h
         src/backend/opencl/OclConfig.h
@@ -24,8 +79,13 @@ if (WITH_OPENCL)
         src/backend/opencl/OclThreads.h
         src/backend/opencl/OclWorker.h
         src/backend/opencl/runners/OclBaseRunner.h
-        src/backend/opencl/runners/OclCnRunner.h
-        src/backend/opencl/runners/tools/OclCnR.h
+        src/backend/opencl/runners/OclOggPowRunner.h
+        src/backend/opencl/runners/OclXelisHashRunner.h
+        src/backend/opencl/runners/OclNexaPowRunner.h
+        ${OGGPOW_KERNEL_HEADER}
+        ${XELIS_KERNEL_HEADER}
+        ${NEXAPOW_KERNEL_HEADER}
+        ${NEXAPOW_HIP_KERNEL_HEADER}
         src/backend/opencl/runners/tools/OclSharedData.h
         src/backend/opencl/runners/tools/OclSharedState.h
         src/backend/opencl/wrappers/OclContext.h
@@ -39,12 +99,6 @@ if (WITH_OPENCL)
 
     set(SOURCES_BACKEND_OPENCL
         src/backend/opencl/cl/OclSource.cpp
-        src/backend/opencl/generators/ocl_generic_cn_generator.cpp
-        src/backend/opencl/generators/ocl_vega_cn_generator.cpp
-        src/backend/opencl/kernels/Cn0Kernel.cpp
-        src/backend/opencl/kernels/Cn1Kernel.cpp
-        src/backend/opencl/kernels/Cn2Kernel.cpp
-        src/backend/opencl/kernels/CnBranchKernel.cpp
         src/backend/opencl/OclBackend.cpp
         src/backend/opencl/OclCache.cpp
         src/backend/opencl/OclConfig.cpp
@@ -52,9 +106,12 @@ if (WITH_OPENCL)
         src/backend/opencl/OclThread.cpp
         src/backend/opencl/OclThreads.cpp
         src/backend/opencl/OclWorker.cpp
+        src/backend/opencl/generators/ocl_generic_gpupow_generator.cpp
         src/backend/opencl/runners/OclBaseRunner.cpp
-        src/backend/opencl/runners/OclCnRunner.cpp
-        src/backend/opencl/runners/tools/OclCnR.cpp
+        src/backend/opencl/runners/OclOggPowRunner.cpp
+        src/backend/opencl/runners/OclXelisHashRunner.cpp
+        src/backend/opencl/runners/OclNexaPowRunner.cpp
+        ${OGGPOW_SOURCE_DIR}/libprogpow/ProgPow.cpp
         src/backend/opencl/runners/tools/OclSharedData.cpp
         src/backend/opencl/runners/tools/OclSharedState.cpp
         src/backend/opencl/wrappers/OclContext.cpp
@@ -64,6 +121,8 @@ if (WITH_OPENCL)
         src/backend/opencl/wrappers/OclLib.cpp
         src/backend/opencl/wrappers/OclPlatform.cpp
         )
+
+    include_directories(${OGGPOW_SOURCE_DIR}/libprogpow ${CMAKE_CURRENT_BINARY_DIR})
 
     if (XMRIG_OS_APPLE)
         add_definitions(/DCL_TARGET_OPENCL_VERSION=120)

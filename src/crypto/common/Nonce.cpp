@@ -24,7 +24,7 @@ namespace xmrig {
 
 std::atomic<bool> Nonce::m_paused = {true};
 std::atomic<uint64_t>  Nonce::m_sequence[Nonce::MAX] = { {1}, {1}, {1} };
-std::atomic<uint64_t> Nonce::m_nonces[2] = { {0}, {0} };
+std::atomic<uint64_t> Nonce::m_nonces[3] = { {0}, {0}, {0} };
 
 
 } // namespace xmrig

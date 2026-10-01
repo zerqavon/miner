@@ -54,6 +54,8 @@ constexpr static uint32_t kIdleTime     = 60U;
 
 const char *Config::kPauseOnBattery     = "pause-on-battery";
 const char *Config::kPauseOnActive      = "pause-on-active";
+const char *Config::kSplitPool0         = "split-pool0";
+const char *Config::kSplitPool1         = "split-pool1";
 
 
 #ifdef XMRIG_FEATURE_OPENCL
@@ -79,6 +81,8 @@ public:
     bool pauseOnBattery = false;
     CpuConfig cpu;
     uint32_t idleTime   = 0;
+    uint32_t splitPool0 = 0;
+    uint32_t splitPool1 = 0;
 
 #   ifdef XMRIG_ALGO_RANDOMX
     RxConfig rx;
@@ -141,6 +145,24 @@ const xmrig::CpuConfig &xmrig::Config::cpu() const
 uint32_t xmrig::Config::idleTime() const
 {
     return d_ptr->idleTime * 1000U;
+}
+
+
+uint32_t xmrig::Config::splitPool0() const
+{
+    return d_ptr->splitPool0;
+}
+
+
+uint32_t xmrig::Config::splitPool1() const
+{
+    return d_ptr->splitPool1;
+}
+
+
+bool xmrig::Config::isFixedDualPoolSplit() const
+{
+    return d_ptr->splitPool0 > 0 && d_ptr->splitPool1 > 0 && d_ptr->splitPool0 < 100 && d_ptr->splitPool1 < 100 && (d_ptr->splitPool0 + d_ptr->splitPool1) == 100;
 }
 
 
@@ -214,6 +236,8 @@ bool xmrig::Config::read(const IJsonReader &reader, const char *fileName)
 
     d_ptr->pauseOnBattery = reader.getBool(kPauseOnBattery, d_ptr->pauseOnBattery);
     d_ptr->setIdleTime(reader.getValue(kPauseOnActive));
+    d_ptr->splitPool0 = std::min(reader.getUint(kSplitPool0, d_ptr->splitPool0), 100U);
+    d_ptr->splitPool1 = std::min(reader.getUint(kSplitPool1, d_ptr->splitPool1), 100U);
 
     d_ptr->cpu.read(reader.getValue(CpuConfig::kField));
 
@@ -305,4 +329,6 @@ void xmrig::Config::getJSON(rapidjson::Document &doc) const
     doc.AddMember(StringRef(kWatch),                    m_watch, allocator);
     doc.AddMember(StringRef(kPauseOnBattery),           isPauseOnBattery(), allocator);
     doc.AddMember(StringRef(kPauseOnActive),            (d_ptr->idleTime == 0U || d_ptr->idleTime == kIdleTime) ? Value(isPauseOnActive()) : Value(d_ptr->idleTime), allocator);
+    doc.AddMember(StringRef(kSplitPool0),               splitPool0(), allocator);
+    doc.AddMember(StringRef(kSplitPool1),               splitPool1(), allocator);
 }

@@ -17,7 +17,6 @@ if (WITH_CUDA)
         src/backend/cuda/CudaWorker.h
         src/backend/cuda/interfaces/ICudaRunner.h
         src/backend/cuda/runners/CudaBaseRunner.h
-        src/backend/cuda/runners/CudaCnRunner.h
         src/backend/cuda/wrappers/CudaDevice.h
         src/backend/cuda/wrappers/CudaLib.h
        )
@@ -30,7 +29,6 @@ if (WITH_CUDA)
         src/backend/cuda/CudaThreads.cpp
         src/backend/cuda/CudaWorker.cpp
         src/backend/cuda/runners/CudaBaseRunner.cpp
-        src/backend/cuda/runners/CudaCnRunner.cpp
         src/backend/cuda/wrappers/CudaDevice.cpp
         src/backend/cuda/wrappers/CudaLib.cpp
        )
@@ -58,6 +56,7 @@ if (WITH_CUDA)
        list(APPEND HEADERS_BACKEND_CUDA src/backend/cuda/runners/CudaKawPowRunner.h)
        list(APPEND SOURCES_BACKEND_CUDA src/backend/cuda/runners/CudaKawPowRunner.cpp)
    endif()
+
 else()
     remove_definitions(/DXMRIG_FEATURE_CUDA)
     remove_definitions(/DXMRIG_FEATURE_NVML)

@@ -60,6 +60,7 @@ set(HEADERS_BASE
     src/base/net/stratum/ProxyUrl.h
     src/base/net/stratum/Socks5.h
     src/base/net/stratum/strategies/FailoverStrategy.h
+    src/base/net/stratum/strategies/RoundRobinStrategy.h
     src/base/net/stratum/strategies/SinglePoolStrategy.h
     src/base/net/stratum/strategies/StrategyProxy.h
     src/base/net/stratum/SubmitResult.h
@@ -128,6 +129,7 @@ set(SOURCES_BASE
     src/base/net/stratum/ProxyUrl.cpp
     src/base/net/stratum/Socks5.cpp
     src/base/net/stratum/strategies/FailoverStrategy.cpp
+    src/base/net/stratum/strategies/RoundRobinStrategy.cpp
     src/base/net/stratum/strategies/SinglePoolStrategy.cpp
     src/base/net/stratum/Url.cpp
     src/base/net/tools/LineReader.cpp

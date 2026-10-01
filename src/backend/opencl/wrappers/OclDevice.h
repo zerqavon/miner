@@ -54,7 +54,12 @@ public:
         Navi_10,
         Navi_12,
         Navi_14,
-        Navi_21
+        Navi_21,
+        Navi_31,
+        Navi_32,
+        Navi_33,
+        Navi_44,
+        Navi_48
     };
 
     OclDevice() = delete;

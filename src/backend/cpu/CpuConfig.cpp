@@ -179,6 +179,9 @@ void xmrig::CpuConfig::generate()
     count += xmrig::generate<Algorithm::RANDOM_X>(m_threads, m_limit);
     count += xmrig::generate<Algorithm::ARGON2>(m_threads, m_limit);
     count += xmrig::generate<Algorithm::GHOSTRIDER>(m_threads, m_limit);
+    count += xmrig::generate<Algorithm::CIVICLIGHT_FAMILY>(m_threads, m_limit);
+    count += xmrig::generate<Algorithm::VERUSHASH_FAMILY>(m_threads, m_limit);
+    count += xmrig::generate<Algorithm::XELISHASH_FAMILY>(m_threads, m_limit);
 
     m_shouldSave |= count > 0;
 }

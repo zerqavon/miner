@@ -84,6 +84,7 @@ const char *Algorithm::kRX_GRAFT        = "rx/graft";
 const char *Algorithm::kRX_SFX          = "rx/sfx";
 const char *Algorithm::kRX_YADA         = "rx/yada";
 const char *Algorithm::kRX_ZQV          = "rx/zqv";
+const char *Algorithm::kRX_VEXTA        = "rx/vexta";
 #endif
 
 #ifdef XMRIG_ALGO_ARGON2
@@ -102,6 +103,12 @@ const char *Algorithm::kKAWPOW_RVN      = "kawpow";
 const char* Algorithm::kGHOSTRIDER      = "ghostrider";
 const char* Algorithm::kGHOSTRIDER_RTM  = "ghostrider";
 #endif
+
+const char *Algorithm::kCIVICLIGHT      = "civiclight";
+const char *Algorithm::kVERUSHASH       = "verushash";
+const char *Algorithm::kXELISHASH_V3    = "xelishash/v3";
+const char *Algorithm::kNEXAPOW         = "nexapow";
+const char *Algorithm::kOGGPOW          = "oggpow";
 
 
 #define ALGO_NAME(ALGO)         { Algorithm::ALGO, Algorithm::k##ALGO }
@@ -152,6 +159,7 @@ static const std::map<uint32_t, const char *> kAlgorithmNames = {
     ALGO_NAME(RX_SFX),
     ALGO_NAME(RX_YADA),
     ALGO_NAME(RX_ZQV),
+    ALGO_NAME(RX_VEXTA),
 #   endif
 
 #   ifdef XMRIG_ALGO_ARGON2
@@ -167,6 +175,11 @@ static const std::map<uint32_t, const char *> kAlgorithmNames = {
 #   ifdef XMRIG_ALGO_GHOSTRIDER
     ALGO_NAME(GHOSTRIDER_RTM),
 #   endif
+    ALGO_NAME(CIVICLIGHT),
+    ALGO_NAME(VERUSHASH),
+    ALGO_NAME(XELISHASH_V3),
+    ALGO_NAME(NEXAPOW),
+    ALGO_NAME(OGGPOW),
 };
 
 
@@ -271,6 +284,8 @@ static const std::map<const char *, Algorithm::Id, aliasCompare> kAlgorithmAlias
                                     ALGO_ALIAS(RX_YADA,         "randomyada"),
     ALGO_ALIAS_AUTO(RX_ZQV),        ALGO_ALIAS(RX_ZQV,          "randomx/zqv"),
                                     ALGO_ALIAS(RX_ZQV,          "randomzerqavon"),
+    ALGO_ALIAS_AUTO(RX_VEXTA),      ALGO_ALIAS(RX_VEXTA,        "randomx/vexta"),
+                                    ALGO_ALIAS(RX_VEXTA,        "vexta"),
 #   endif
 
 #   ifdef XMRIG_ALGO_ARGON2
@@ -287,6 +302,15 @@ static const std::map<const char *, Algorithm::Id, aliasCompare> kAlgorithmAlias
     ALGO_ALIAS_AUTO(GHOSTRIDER_RTM), ALGO_ALIAS(GHOSTRIDER_RTM, "ghostrider/rtm"),
                                      ALGO_ALIAS(GHOSTRIDER_RTM, "gr"),
 #   endif
+
+    ALGO_ALIAS_AUTO(CIVICLIGHT),     ALGO_ALIAS(CIVICLIGHT,     "civiclight/v2"),
+    ALGO_ALIAS_AUTO(VERUSHASH),      ALGO_ALIAS(VERUSHASH,      "verushash/v2.2"),
+                                    ALGO_ALIAS(VERUSHASH,      "verus"),
+    ALGO_ALIAS_AUTO(XELISHASH_V3),  ALGO_ALIAS(XELISHASH_V3,   "xelishash"),
+    ALGO_ALIAS_AUTO(NEXAPOW),       ALGO_ALIAS(NEXAPOW,        "nexa"),
+                                    ALGO_ALIAS(NEXAPOW,        "nexapow/nexa"),
+    ALGO_ALIAS_AUTO(OGGPOW),        ALGO_ALIAS(OGGPOW,         "ogg"),
+                                    ALGO_ALIAS(OGGPOW,         "oggpow/ogg"),
 };
 
 
@@ -358,10 +382,15 @@ std::vector<xmrig::Algorithm> xmrig::Algorithm::all(const std::function<bool(con
         CN_HEAVY_0, CN_HEAVY_TUBE, CN_HEAVY_XHV,
         CN_PICO_0, CN_PICO_TLO,
         CN_UPX2,
-        RX_0, RX_V2, RX_WOW, RX_ARQ, RX_GRAFT, RX_SFX, RX_YADA, RX_ZQV,
+        RX_0, RX_V2, RX_WOW, RX_ARQ, RX_GRAFT, RX_SFX, RX_YADA, RX_ZQV, RX_VEXTA,
         AR2_CHUKWA, AR2_CHUKWA_V2, AR2_WRKZ,
         KAWPOW_RVN,
-        GHOSTRIDER_RTM
+        GHOSTRIDER_RTM,
+        CIVICLIGHT,
+        VERUSHASH,
+        XELISHASH_V3,
+        NEXAPOW,
+        OGGPOW
     };
 
     Algorithms out;

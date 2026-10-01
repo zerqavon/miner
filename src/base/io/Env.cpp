@@ -49,15 +49,15 @@ static std::map<String, String> variables;
 
 static void createVariables()
 {
-    variables.insert({ "XMRIG_VERSION",  APP_VERSION });
-    variables.insert({ "XMRIG_KIND",     APP_KIND });
-    variables.insert({ "XMRIG_HOSTNAME", Env::hostname() });
-    variables.insert({ "XMRIG_EXE",      Process::exepath() });
-    variables.insert({ "XMRIG_EXE_DIR",  Process::location(Process::ExeLocation) });
-    variables.insert({ "XMRIG_CWD",      Process::location(Process::CwdLocation) });
-    variables.insert({ "XMRIG_HOME_DIR", Process::location(Process::HomeLocation) });
-    variables.insert({ "XMRIG_TEMP_DIR", Process::location(Process::TempLocation) });
-    variables.insert({ "XMRIG_DATA_DIR", Process::location(Process::DataLocation) });
+    variables.insert({ "LIQUIDMINER_VERSION",  APP_VERSION });
+    variables.insert({ "LIQUIDMINER_KIND",     APP_KIND });
+    variables.insert({ "LIQUIDMINER_HOSTNAME", Env::hostname() });
+    variables.insert({ "LIQUIDMINER_EXE",      Process::exepath() });
+    variables.insert({ "LIQUIDMINER_EXE_DIR",  Process::location(Process::ExeLocation) });
+    variables.insert({ "LIQUIDMINER_CWD",      Process::location(Process::CwdLocation) });
+    variables.insert({ "LIQUIDMINER_HOME_DIR", Process::location(Process::HomeLocation) });
+    variables.insert({ "LIQUIDMINER_TEMP_DIR", Process::location(Process::TempLocation) });
+    variables.insert({ "LIQUIDMINER_DATA_DIR", Process::location(Process::DataLocation) });
 
     String hostname = "HOSTNAME";
     if (!getenv(hostname)) { // NOLINT(concurrency-mt-unsafe)

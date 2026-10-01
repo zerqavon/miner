@@ -44,11 +44,16 @@ public:
     KPCache();
     ~KPCache();
 
-    bool init(uint32_t epoch);
+    // KawPow uses 512 dataset parents; OggPoW follows the ProgPoW/Ethash
+    // 256-parent dataset.  Keeping the selector here lets both algorithms
+    // share the allocation and DAG infrastructure without sharing an
+    // incorrectly generated cache.
+    bool init(uint32_t epoch, uint32_t dataset_parents = num_dataset_parents);
 
     void* data() const;
     size_t size() const { return m_size; }
     uint32_t epoch() const { return m_epoch; }
+    uint32_t datasetParents() const { return m_datasetParents; }
 
     const uint32_t* l1_cache() const { return m_DAGCache.data(); }
 
@@ -64,6 +69,7 @@ private:
     VirtualMemory* m_memory = nullptr;
     size_t m_size = 0;
     uint32_t m_epoch = 0xFFFFFFFFUL;
+    uint32_t m_datasetParents = num_dataset_parents;
     std::vector<uint32_t> m_DAGCache;
 };
 

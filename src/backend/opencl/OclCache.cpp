@@ -112,7 +112,7 @@ cl_program xmrig::OclCache::build(const IOclRunner *runner)
     std::string fileName;
     if (runner->data().cache) {
 #       ifdef _WIN32
-        fileName = prefix() + "\\xmrig\\.cache\\" + cacheKey(runner) + ".bin";
+        fileName = prefix() + "\\LiquidMiner\\.cache\\" + cacheKey(runner) + ".bin";
 #       else
         fileName = prefix() + "/.cache/" + cacheKey(runner) + ".bin";
 #       endif

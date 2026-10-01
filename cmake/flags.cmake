@@ -101,6 +101,20 @@ elseif (CMAKE_CXX_COMPILER_ID MATCHES Clang)
     endif()
 endif()
 
+# RandomX still selects its JIT and AES paths at runtime, but the surrounding
+# worker, hashing glue and utility code also benefits from host tuning. This
+# is intentionally opt-in because -march=native makes the binary non-portable.
+if (XMRIG_NATIVE_OPTIMIZATIONS AND NOT XMRIG_ARM AND NOT XMRIG_RISCV AND
+    (CMAKE_CXX_COMPILER_ID MATCHES GNU OR CMAKE_CXX_COMPILER_ID MATCHES Clang))
+    include(CheckCXXCompilerFlag)
+    check_cxx_compiler_flag("-march=native" XMRIG_HAS_MARCH_NATIVE)
+    if (XMRIG_HAS_MARCH_NATIVE)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=native -mtune=native")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -mtune=native")
+        message(STATUS "Native host CPU optimizations enabled (-march=native -mtune=native)")
+    endif()
+endif()
+
 if (NOT WIN32)
     check_symbol_exists("__builtin___clear_cache" "stdlib.h" HAVE_BUILTIN_CLEAR_CACHE)
     if (HAVE_BUILTIN_CLEAR_CACHE)

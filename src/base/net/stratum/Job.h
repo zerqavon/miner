@@ -63,6 +63,7 @@ public:
     bool setTarget(const char *target);
     size_t nonceOffset() const;
     void setDiff(uint64_t diff);
+    bool checkHash(const uint8_t *hash) const;
     void setSigKey(const char *sig_key);
 
     inline bool isNicehash() const                      { return m_nicehash; }
@@ -76,7 +77,9 @@ public:
     inline const String &poolWallet() const             { return m_poolWallet; }
     inline const uint32_t *nonce() const                { return reinterpret_cast<const uint32_t*>(m_blob + nonceOffset()); }
     inline const uint8_t *blob() const                  { return m_blob; }
-    inline size_t nonceSize() const                     { return (algorithm().family() == Algorithm::KAWPOW) ?  8 :  4; }
+    // Echelon/Nexa uses a 128-bit solution nonce: 64-bit pool extranonce plus
+    // a 64-bit miner-controlled counter.
+    inline size_t nonceSize() const                     { return algorithm().family() == Algorithm::NEXAPOW_FAMILY ? 8 : ((algorithm().family() == Algorithm::KAWPOW || algorithm().family() == Algorithm::XELISHASH_FAMILY) ?  8 :  4); }
     inline size_t size() const                          { return m_size; }
     inline uint32_t *nonce()                            { return reinterpret_cast<uint32_t*>(m_blob + nonceOffset()); }
     inline uint32_t backend() const                     { return m_backend; }
@@ -87,6 +90,7 @@ public:
     inline uint8_t *blob()                              { return m_blob; }
     inline uint8_t fixedByte() const                    { return *(m_blob + 42); }
     inline uint8_t index() const                        { return m_index; }
+    inline uint8_t poolId() const                       { return m_poolId; }
     inline void reset()                                 { m_size = 0; m_diff = 0; }
     inline void setAlgorithm(const Algorithm::Id id)    { m_algorithm = id; }
     inline void setAlgorithm(const char *algo)          { m_algorithm = algo; }
@@ -95,6 +99,7 @@ public:
     inline void setExtraNonce(const String &extraNonce) { m_extraNonce = extraNonce; }
     inline void setHeight(uint64_t height)              { m_height = height; }
     inline void setIndex(uint8_t index)                 { m_index = index; }
+    inline void setPoolId(uint8_t poolId)               { m_poolId = poolId; }
     inline void setPoolWallet(const String &poolWallet) { m_poolWallet = poolWallet; }
 
 #   ifdef XMRIG_PROXY_PROJECT
@@ -159,8 +164,10 @@ private:
     uint64_t m_diff     = 0;
     uint64_t m_height   = 0;
     uint64_t m_target   = 0;
+    uint64_t m_vextaTarget[4] = { 0, 0, 0, 0 };
     uint8_t m_blob[kMaxBlobSize]{ 0 };
     uint8_t m_index     = 0;
+    uint8_t m_poolId    = 0;
 
 #   ifdef XMRIG_PROXY_PROJECT
     char m_rawBlob[kMaxBlobSize * 2 + 8]{};

@@ -46,7 +46,7 @@ const char *BenchConfig::kUser      = "user";
 const char *BenchConfig::kVerify    = "verify";
 
 #ifndef XMRIG_DEBUG_BENCHMARK_API
-const char *BenchConfig::kApiHost   = "api.xmrig.com";
+const char *BenchConfig::kApiHost   = "bench.liquidminer.local";
 #else
 const char *BenchConfig::kApiHost   = "127.0.0.1";
 #endif

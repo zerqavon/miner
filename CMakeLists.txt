@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(xmrig)
+project(liquidminer)
 
 option(WITH_HWLOC           "Enable hwloc support" ON)
 option(WITH_CN_LITE         "Enable CryptoNight-Lite algorithms family" ON)
@@ -21,6 +21,11 @@ option(WITH_OPENCL          "Enable OpenCL backend" ON)
 set(WITH_OPENCL_VERSION 200 CACHE STRING "Target OpenCL version")
 set_property(CACHE WITH_OPENCL_VERSION PROPERTY STRINGS 120 200 210 220)
 option(WITH_CUDA            "Enable CUDA backend" ON)
+option(WITH_VULKAN_KAWPOW   "Enable Vulkan KawPow backend" ON)
+option(WITH_PEARL_HIP       "Build AMD HIP PearlHash backend (requires ROCm HIP SDK)" OFF)
+option(WITH_NEXA_HIP        "Enable native AMD HIP NexaPoW backend" ON)
+option(WITH_VERUSHASH       "Enable VerusHash v2.2 CPU algorithm" ON)
+option(WITH_XELISHASH       "Enable XelisHash v3 CPU algorithm" ON)
 option(WITH_NVML            "Enable NVML (NVIDIA Management Library) support (only if CUDA backend enabled)" ON)
 option(WITH_ADL             "Enable ADL (AMD Display Library) or sysfs support (only if OpenCL backend enabled)" ON)
 option(WITH_STRICT_CACHE    "Enable strict checks for OpenCL cache" ON)
@@ -29,9 +34,13 @@ option(WITH_PROFILING       "Enable profiling for developers" OFF)
 option(WITH_SSE4_1          "Enable SSE 4.1 for Blake2" ON)
 option(WITH_AVX2            "Enable AVX2 for Blake2" ON)
 option(WITH_VAES            "Enable VAES instructions for Cryptonight" ON)
-option(WITH_BENCHMARK       "Enable builtin RandomX benchmark and stress test" ON)
+option(WITH_BENCHMARK       "Enable builtin benchmark and stress test" OFF)
 option(WITH_SECURE_JIT      "Enable secure access to JIT memory" OFF)
 option(WITH_DMI             "Enable DMI/SMBIOS reader" ON)
+
+# Build a binary tuned for the host CPU. Keep this disabled for distributable
+# binaries because the resulting executable may not run on older CPUs.
+option(XMRIG_NATIVE_OPTIMIZATIONS "Tune native C/C++ code for the build host CPU" OFF)
 
 option(BUILD_STATIC         "Build static binary" OFF)
 option(ARM_V8               "Force ARMv8 (64 bit) architecture, use with caution if automatic detection fails, but you sure it may work" OFF)
@@ -47,6 +56,61 @@ include (cmake/cpu.cmake)
 include (cmake/os.cmake)
 include (src/base/base.cmake)
 include (src/backend/backend.cmake)
+
+if (WITH_VULKAN_KAWPOW)
+    if (WIN32 AND (CMAKE_CXX_COMPILER_ID MATCHES "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+        set(_vulkan_kawpow_default "${CMAKE_SOURCE_DIR}/thirdparty-bench/rdna3-kawpow-miner/rust/target/x86_64-pc-windows-gnu/release/librdna3_kawpow.a")
+    else()
+        set(_vulkan_kawpow_default "${CMAKE_SOURCE_DIR}/thirdparty-bench/rdna3-kawpow-miner/rust/target/release/rdna3_kawpow.lib")
+    endif()
+    set(VULKAN_KAWPOW_RUST_LIB "${_vulkan_kawpow_default}" CACHE FILEPATH "Release static library produced by the Vulkan KawPow host")
+    if (NOT EXISTS "${VULKAN_KAWPOW_RUST_LIB}")
+        message(WARNING "Vulkan KawPow library not found: ${VULKAN_KAWPOW_RUST_LIB}; Vulkan backend disabled")
+        set(WITH_VULKAN_KAWPOW OFF)
+    endif()
+endif()
+
+if (WITH_PEARL_HIP)
+    if (NOT WIN32)
+        message(FATAL_ERROR "WITH_PEARL_HIP currently supports the Windows HIP SDK layout only")
+    endif()
+    find_program(PEARL_HIPCC hipcc
+        HINTS "$ENV{HIP_PATH}/bin" "C:/Program Files/AMD/ROCm/7.2/bin"
+        PATH_SUFFIXES bin)
+    if (NOT PEARL_HIPCC)
+        message(FATAL_ERROR "WITH_PEARL_HIP requires hipcc from the AMD HIP SDK")
+    endif()
+    set(PEARL_HIP_SRC "${CMAKE_SOURCE_DIR}/thirdparty-bench/akoya-miner/native/pearl-gemm/csrc")
+    set(PEARL_HIP_HOST "${PEARL_HIP_SRC}/rocm/host/pearl_gemm_capi_rocm.cpp")
+    set(PEARL_HIP_DLL "${CMAKE_BINARY_DIR}/pearl_gemm_capi.dll")
+    add_custom_command(
+        OUTPUT "${PEARL_HIP_DLL}"
+        COMMAND "${PEARL_HIPCC}" --offload-arch=gfx1200 -std=c++17 -O3 -shared
+                -I "${PEARL_HIP_SRC}" -I "${PEARL_HIP_SRC}/rocm"
+                "${PEARL_HIP_HOST}" -o "${PEARL_HIP_DLL}"
+        DEPENDS "${PEARL_HIP_HOST}"
+                "${PEARL_HIP_SRC}/rocm/pearl_kernels.cuh"
+                "${PEARL_HIP_SRC}/rocm/blake3_device.cuh"
+                "${PEARL_HIP_SRC}/capi/pearl_gemm_capi.h"
+        VERBATIM)
+    add_custom_target(liquidminer_pearl_hip ALL DEPENDS "${PEARL_HIP_DLL}")
+endif()
+
+if (WITH_NEXA_HIP AND WIN32)
+    find_path(NEXA_HIP_INCLUDE hip/hip_runtime_api.h
+        HINTS "$ENV{HIP_PATH}/include" "C:/Program Files/AMD/ROCm/7.2/include")
+    find_library(NEXA_HIP_LIBRARY amdhip64
+        HINTS "$ENV{HIP_PATH}/lib" "C:/Program Files/AMD/ROCm/7.2/lib")
+    find_library(NEXA_HIPRTC_LIBRARY hiprtc
+        HINTS "$ENV{HIP_PATH}/lib" "C:/Program Files/AMD/ROCm/7.2/lib")
+    if (NEXA_HIP_INCLUDE AND NEXA_HIP_LIBRARY AND NEXA_HIPRTC_LIBRARY)
+        add_definitions(/DXMRIG_FEATURE_NEXA_HIP /D__HIP_PLATFORM_AMD__)
+        include_directories("${NEXA_HIP_INCLUDE}")
+    else()
+        message(WARNING "Native AMD HIP NexaPoW backend disabled: ROCm HIP SDK not found")
+        set(WITH_NEXA_HIP OFF)
+    endif()
+endif()
 
 
 set(HEADERS
@@ -84,6 +148,11 @@ set(HEADERS_CRYPTO
     src/crypto/cn/CryptoNight_monero.h
     src/crypto/cn/CryptoNight_test.h
     src/crypto/cn/CryptoNight.h
+    src/crypto/civiclight/CivicLight.h
+    src/crypto/civiclight/yespower/insecure_memzero.h
+    src/crypto/civiclight/yespower/sysendian.h
+    src/crypto/civiclight/yespower/yespower.h
+    src/crypto/civiclight/yespower/yespower_sha256.h
     src/crypto/cn/groestl_tables.h
     src/crypto/cn/hash.h
     src/crypto/cn/skein_port.h
@@ -93,6 +162,7 @@ set(HEADERS_CRYPTO
     src/crypto/common/Nonce.h
     src/crypto/common/portable/mm_malloc.h
     src/crypto/common/VirtualMemory.h
+    src/crypto/nexapow/NexaPow.h
    )
 
 if (XMRIG_ARM OR XMRIG_RISCV)
@@ -115,7 +185,7 @@ set(SOURCES
     src/net/Network.cpp
     src/net/strategies/DonateStrategy.cpp
     src/Summary.cpp
-    src/xmrig.cpp
+    src/liquidminer.cpp
    )
 
 set(SOURCES_CRYPTO
@@ -123,13 +193,83 @@ set(SOURCES_CRYPTO
     src/crypto/cn/c_groestl.c
     src/crypto/cn/c_jh.c
     src/crypto/cn/c_skein.c
+    src/crypto/civiclight/CivicLight.cpp
+    src/crypto/civiclight/yespower/yespower-opt.c
+    src/crypto/civiclight/yespower/yespower_sha256.c
     src/crypto/cn/CnCtx.cpp
     src/crypto/cn/CnHash.cpp
     src/crypto/common/HugePagesInfo.cpp
     src/crypto/common/MemoryPool.cpp
     src/crypto/common/Nonce.cpp
     src/crypto/common/VirtualMemory.cpp
+    src/crypto/nexapow/NexaPow.cpp
    )
+
+if (WITH_VERUSHASH)
+    list(APPEND HEADERS_CRYPTO
+        thirdparty-bench/algo-sources/verus/src/crypto/haraka.h
+        thirdparty-bench/algo-sources/verus/src/crypto/verus_clhash.h
+        thirdparty-bench/algo-sources/verus/src/crypto/verus_hash.h
+    )
+    list(APPEND SOURCES_CRYPTO
+        thirdparty-bench/algo-sources/verus/src/crypto/haraka.c
+        thirdparty-bench/algo-sources/verus/src/crypto/verus_clhash.c
+        thirdparty-bench/algo-sources/verus/src/crypto/verus_clhash_v2.c
+        thirdparty-bench/algo-sources/verus/src/crypto/verus_hash.cpp
+    )
+    if (CMAKE_C_COMPILER_ID MATCHES GNU OR CMAKE_C_COMPILER_ID MATCHES Clang)
+        set_source_files_properties(
+            thirdparty-bench/algo-sources/verus/src/crypto/verus_clhash.c
+            thirdparty-bench/algo-sources/verus/src/crypto/verus_clhash_v2.c
+            thirdparty-bench/algo-sources/verus/src/crypto/verus_hash.cpp
+            PROPERTIES COMPILE_OPTIONS "-mssse3;-mpclmul;-maes")
+    endif()
+    add_compile_definitions(XMRIG_ALGO_VERUSHASH)
+endif()
+
+if (WITH_XELISHASH)
+    list(APPEND HEADERS_CRYPTO src/crypto/xelis/XelisHash.h)
+    list(APPEND SOURCES_CRYPTO
+        thirdparty-bench/algo-sources/xelis/C/xelis_hash_v3.c
+        thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD/chacha20.c
+        thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD/chacha20_sse2.c
+        thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD/chacha20_avx2.c
+        thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD/chacha20_dispatch.c
+        thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD/cpu_features.c
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3.c
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_portable.c
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_sse2.c
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_sse41.c
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_avx2.c
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_avx512.c
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_dispatch.c
+    )
+    include_directories(thirdparty-bench/algo-sources/xelis/C)
+    include_directories(thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD)
+    include_directories(thirdparty-bench/algo-sources/xelis/C/BLAKE3/c)
+    add_compile_definitions(XMRIG_ALGO_XELISHASH)
+    set_source_files_properties(
+        thirdparty-bench/algo-sources/xelis/C/xelis_hash_v3.c
+        PROPERTIES COMPILE_DEFINITIONS XELIS_LIQUIDMINER)
+    set_source_files_properties(
+        thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD/chacha20_avx2.c
+        PROPERTIES COMPILE_OPTIONS "-mavx2")
+    set_source_files_properties(
+        thirdparty-bench/algo-sources/xelis/C/ChaCha20-SIMD/chacha20_sse2.c
+        PROPERTIES COMPILE_OPTIONS "-msse2")
+    set_source_files_properties(
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_sse2.c
+        PROPERTIES COMPILE_OPTIONS "-msse2")
+    set_source_files_properties(
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_sse41.c
+        PROPERTIES COMPILE_OPTIONS "-mssse3;-msse4.1")
+    set_source_files_properties(
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_avx2.c
+        PROPERTIES COMPILE_OPTIONS "-mavx2")
+    set_source_files_properties(
+        thirdparty-bench/algo-sources/xelis/C/BLAKE3/c/blake3_avx512.c
+        PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512vl")
+endif()
 
 if (CMAKE_C_COMPILER_ID MATCHES GNU)
     set_source_files_properties(src/crypto/cn/CnHash.cpp PROPERTIES COMPILE_FLAGS "-Ofast -fno-tree-vectorize")
@@ -230,24 +370,64 @@ include(src/hw/dmi/dmi.cmake)
 
 include_directories(src)
 include_directories(src/3rdparty)
+if (WITH_VERUSHASH)
+    include_directories(thirdparty-bench/algo-sources/verus/src)
+    include_directories(thirdparty-bench/algo-sources/verus/src/crypto)
+endif()
 include_directories(${UV_INCLUDE_DIR})
 
 if (WITH_DEBUG_LOG)
     add_definitions(/DAPP_DEBUG)
 endif()
 
+if (WIN32 AND BUILD_STATIC AND WITH_HWLOC AND CMAKE_CXX_COMPILER_ID MATCHES GNU)
+    find_library(LTDL_STATIC_LIBRARY
+        NAMES libltdl.a
+        PATHS "${XMRIG_DEPS}" "$ENV{XMRIG_DEPS}" "$ENV{MINGW_PREFIX}" "C:/tools/msys64/mingw64"
+        PATH_SUFFIXES lib
+        NO_DEFAULT_PATH
+    )
+    if (LTDL_STATIC_LIBRARY)
+        list(APPEND STATIC_HWLOC_LIBS ${LTDL_STATIC_LIBRARY})
+    endif()
+endif()
+
 add_executable(${CMAKE_PROJECT_NAME} ${HEADERS} ${SOURCES} ${SOURCES_OS} ${HEADERS_CRYPTO} ${SOURCES_CRYPTO} ${SOURCES_SYSLOG} ${TLS_SOURCES} ${XMRIG_ASM_SOURCES})
+
+if (WITH_PEARL_HIP)
+    add_dependencies(${CMAKE_PROJECT_NAME} liquidminer_pearl_hip)
+    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PEARL_HIP_DLL}" "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>")
+endif()
 # Keep the topology library after algorithm archives too: GhostRider and other
 # static objects can reference hwloc after its first occurrence on GNU linkers.
-target_link_libraries(${CMAKE_PROJECT_NAME} ${XMRIG_ASM_LIBRARY} ${OPENSSL_LIBRARIES} ${UV_LIBRARIES} ${EXTRA_LIBS} ${CPUID_LIB} ${ARGON2_LIBRARY} ${ETHASH_LIBRARY} ${GHOSTRIDER_LIBRARY} ${CPUID_LIB})
+target_link_libraries(${CMAKE_PROJECT_NAME} ${XMRIG_ASM_LIBRARY} ${OPENSSL_LIBRARIES} ${UV_LIBRARIES} ${EXTRA_LIBS} ${CPUID_LIB} ${ARGON2_LIBRARY} ${ETHASH_LIBRARY} ${GHOSTRIDER_LIBRARY} ${CPUID_LIB} ${STATIC_HWLOC_LIBS})
+
+if (WITH_NEXA_HIP)
+    target_link_libraries(${CMAKE_PROJECT_NAME} "${NEXA_HIP_LIBRARY}" "${NEXA_HIPRTC_LIBRARY}")
+    foreach(_hip_runtime amdhip64_7.dll amd_comgr0702.dll amd_comgr_3.dll hiprtc0702.dll hiprtc-builtins0702.dll)
+        add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "C:/Program Files/AMD/ROCm/7.2/bin/${_hip_runtime}"
+                "$<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>/${_hip_runtime}")
+    endforeach()
+endif()
+
+if (WITH_VULKAN_KAWPOW)
+    # Rust's GNU staticlib must precede the Win32 system libraries so the
+    # MinGW linker can resolve its transitive runtime imports.
+    target_link_libraries(${CMAKE_PROJECT_NAME} "${VULKAN_KAWPOW_RUST_LIB}" ws2_32 ntdll bcrypt)
+endif()
 
 if (WIN32)
-    if (NOT ARM_TARGET)
+    if (WITH_MSR AND NOT ARM_TARGET)
         add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/bin/WinRing0/WinRing0x64.sys" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
     endif()
 
-    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/benchmark_1M.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
-    add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/benchmark_10M.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
+    if (WITH_BENCHMARK)
+        add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/benchmark_1M.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
+        add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/benchmark_10M.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
+    endif()
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/pool_mine_example.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/solo_mine_example.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)
     add_custom_command(TARGET ${CMAKE_PROJECT_NAME} POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/scripts/rtm_ghostrider_example.cmd" $<TARGET_FILE_DIR:${CMAKE_PROJECT_NAME}>)

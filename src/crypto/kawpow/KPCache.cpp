@@ -49,13 +49,13 @@ KPCache::~KPCache()
 }
 
 
-bool KPCache::init(uint32_t epoch)
+bool KPCache::init(uint32_t epoch, uint32_t dataset_parents)
 {
     if (epoch >= sizeof(cache_sizes) / sizeof(cache_sizes[0])) {
         return false;
     }
 
-    if (m_epoch == epoch) {
+    if (m_epoch == epoch && m_datasetParents == dataset_parents) {
         return true;
     }
 
@@ -91,10 +91,10 @@ bool KPCache::init(uint32_t epoch)
             const uint32_t a = (cache_nodes * i) / n;
             const uint32_t b = (cache_nodes * (i + 1)) / n;
 
-            threads.emplace_back([this, a, b, &cache]() {
+            threads.emplace_back([this, a, b, dataset_parents, &cache]() {
                 uint32_t j = a;
-                for (; j + 4 <= b; j += 4) ethash_calculate_dag_item4_opt(((node*)m_DAGCache.data()) + j, j, num_dataset_parents, &cache);
-                for (; j < b; ++j) ethash_calculate_dag_item_opt(((node*)m_DAGCache.data()) + j, j, num_dataset_parents, &cache);
+                for (; j + 4 <= b; j += 4) ethash_calculate_dag_item4_opt(((node*)m_DAGCache.data()) + j, j, dataset_parents, &cache);
+                for (; j < b; ++j) ethash_calculate_dag_item_opt(((node*)m_DAGCache.data()) + j, j, dataset_parents, &cache);
             });
         }
 
@@ -105,6 +105,7 @@ bool KPCache::init(uint32_t epoch)
 
     m_size = size;
     m_epoch = epoch;
+    m_datasetParents = dataset_parents;
 
     LOG_INFO("%s " YELLOW("KawPow") " light cache for epoch " WHITE_BOLD("%u") " calculated " BLACK_BOLD("(%" PRIu64 "ms)"), Tags::miner(), epoch, Chrono::steadyMSecs() - start_ms);
 

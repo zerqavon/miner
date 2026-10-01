@@ -52,7 +52,7 @@ public:
 private:
     static std::atomic<bool> m_paused;
     static std::atomic<uint64_t> m_sequence[MAX];
-    static std::atomic<uint64_t> m_nonces[2];
+    static std::atomic<uint64_t> m_nonces[3];
 };
 
 

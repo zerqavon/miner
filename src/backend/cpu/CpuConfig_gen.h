@@ -128,6 +128,10 @@ size_t inline generate<Algorithm::RANDOM_X>(Threads<CpuThreads> &threads, uint32
 
     count += generate(Algorithm::kRX, threads, Algorithm::RX_0, limit);
 
+    // Keep Vexta on its own automatically-sized profile. Falling back to the
+    // generic rx profile would silently select the legacy half-thread layout.
+    count += generate(Algorithm::kRX_VEXTA, threads, Algorithm::RX_VEXTA, limit);
+
     return count;
 }
 #endif
@@ -147,6 +151,29 @@ template<>
 size_t inline generate<Algorithm::GHOSTRIDER>(Threads<CpuThreads>& threads, uint32_t limit)
 {
     return generate(Algorithm::kGHOSTRIDER, threads, Algorithm::GHOSTRIDER_RTM, limit);
+}
+#endif
+
+
+template<>
+size_t inline generate<Algorithm::CIVICLIGHT_FAMILY>(Threads<CpuThreads> &threads, uint32_t limit)
+{
+    return generate(Algorithm::kCIVICLIGHT, threads, Algorithm::CIVICLIGHT, limit);
+}
+
+#ifdef XMRIG_ALGO_XELISHASH
+template<>
+size_t inline generate<Algorithm::XELISHASH_FAMILY>(Threads<CpuThreads> &threads, uint32_t limit)
+{
+    return generate(Algorithm::kXELISHASH_V3, threads, Algorithm::XELISHASH_V3, limit);
+}
+#endif
+
+#ifdef XMRIG_ALGO_VERUSHASH
+template<>
+size_t inline generate<Algorithm::VERUSHASH_FAMILY>(Threads<CpuThreads> &threads, uint32_t limit)
+{
+    return generate(Algorithm::kVERUSHASH, threads, Algorithm::VERUSHASH, limit);
 }
 #endif
 

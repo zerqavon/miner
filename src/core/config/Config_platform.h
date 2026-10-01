@@ -63,6 +63,8 @@ static const option options[] = {
     { "print-time",            1, nullptr, IConfig::PrintTimeKey          },
     { "retries",               1, nullptr, IConfig::RetriesKey            },
     { "retry-pause",           1, nullptr, IConfig::RetryPauseKey         },
+    { "split-pool0",           1, nullptr, IConfig::SplitPool0Key         },
+    { "split-pool1",           1, nullptr, IConfig::SplitPool1Key         },
     { "syslog",                0, nullptr, IConfig::SyslogKey             },
     { "threads",               1, nullptr, IConfig::ThreadsKey            },
     { "url",                   1, nullptr, IConfig::UrlKey                },

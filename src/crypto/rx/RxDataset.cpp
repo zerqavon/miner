@@ -105,7 +105,6 @@ bool xmrig::RxDataset::init(const Buffer &seed, uint32_t numThreads, int priorit
     }
 
     const uint64_t datasetItemCount = randomx_dataset_item_count();
-
     if (numThreads > 1) {
         std::vector<std::thread> threads;
         threads.reserve(numThreads);

@@ -56,8 +56,8 @@ public:
             return;
         }
 
-        if (index() == 1 && job.index() == 0 && job == m_jobs[0]) {
-            m_index = 0;
+        if (index() == 1 && job.index() != 1 && job == m_jobs[job.index()]) {
+            m_index = job.index();
             return;
         }
 
@@ -110,11 +110,11 @@ private:
     }
 
 
-    alignas(8) uint8_t m_blobs[2][Job::kMaxBlobSize * N]{};
-    Job m_jobs[2];
-    uint32_t m_rounds[2] = { 0, 0 };
-    uint16_t m_nonce_offset[2] = { 0, 0 };
-    uint64_t m_nonce_mask[2] = { 0, 0 };
+    alignas(8) uint8_t m_blobs[3][Job::kMaxBlobSize * N]{};
+    Job m_jobs[3];
+    uint32_t m_rounds[3] = { 0, 0, 0 };
+    uint16_t m_nonce_offset[3] = { 0, 0, 0 };
+    uint64_t m_nonce_mask[3] = { 0, 0, 0 };
     uint64_t m_sequence  = 0;
     uint8_t m_index      = 0;
 };

@@ -208,13 +208,11 @@ void xmrig::OclConfig::generate()
 
     size_t count = 0;
 
-    count += xmrig::generate<Algorithm::CN>(m_threads, devices);
-    count += xmrig::generate<Algorithm::CN_LITE>(m_threads, devices);
-    count += xmrig::generate<Algorithm::CN_HEAVY>(m_threads, devices);
-    count += xmrig::generate<Algorithm::CN_PICO>(m_threads, devices);
-    count += xmrig::generate<Algorithm::CN_FEMTO>(m_threads, devices);
     count += xmrig::generate<Algorithm::RANDOM_X>(m_threads, devices);
     count += xmrig::generate<Algorithm::KAWPOW>(m_threads, devices);
+    count += xmrig::generate<Algorithm::XELISHASH_FAMILY>(m_threads, devices);
+    count += xmrig::generate<Algorithm::NEXAPOW_FAMILY>(m_threads, devices);
+    count += xmrig::generate<Algorithm::OGGPOW_FAMILY>(m_threads, devices);
 
     m_shouldSave = count > 0;
 }

@@ -19,7 +19,6 @@
 
 #include "backend/cuda/CudaWorker.h"
 #include "backend/common/Tags.h"
-#include "backend/cuda/runners/CudaCnRunner.h"
 #include "backend/cuda/wrappers/CudaDevice.h"
 #include "base/io/log/Log.h"
 #include "base/tools/Alignment.h"
@@ -32,7 +31,6 @@
 #ifdef XMRIG_ALGO_RANDOMX
 #   include "backend/cuda/runners/CudaRxRunner.h"
 #endif
-
 
 #ifdef XMRIG_ALGO_KAWPOW
 #   include "backend/cuda/runners/CudaKawPowRunner.h"
@@ -68,17 +66,19 @@ xmrig::CudaWorker::CudaWorker(size_t id, const CudaLaunchData &data) :
 #       endif
         break;
 
-    case Algorithm::ARGON2:
-        break;
-
     case Algorithm::KAWPOW:
 #       ifdef XMRIG_ALGO_KAWPOW
         m_runner = new CudaKawPowRunner(id, data);
 #       endif
         break;
 
+    case Algorithm::XELISHASH_FAMILY:
+    case Algorithm::NEXAPOW_FAMILY:
+    case Algorithm::OGGPOW_FAMILY:
+        LOG_ERR("%s" RED_S " GPU runner for algorithm " RED_BOLD("%s") RED_S " is not implemented yet", cuda_tag(), m_algorithm.name());
+        break;
+
     default:
-        m_runner = new CudaCnRunner(id, data);
         break;
     }
 
@@ -171,7 +171,7 @@ bool xmrig::CudaWorker::consumeJob()
         return false;
     }
 
-    m_job.add(m_miner->job(), intensity(), Nonce::CUDA);
+    m_job.add(m_miner->job(true), intensity(), Nonce::CUDA);
 
     return m_runner->set(m_job.currentJob(), m_job.blob());
 }

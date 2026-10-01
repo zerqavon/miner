@@ -33,7 +33,7 @@
 
 void xmrig::OclCache::createDirectory()
 {
-    std::string path = prefix() + "/xmrig";
+    std::string path = prefix() + "/LiquidMiner";
     _mkdir(path.c_str());
 
     path += "/.cache";
